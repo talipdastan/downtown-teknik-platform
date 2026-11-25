@@ -1,0 +1,48 @@
+{
+  "$schema": "avm-tech-user-mapping-v1",
+  "description": "sayac_takip_app (Firebase) kullanicilarini AVM TECH (Supabase public.profiles) hesaplarina esleme sablonu.",
+  "generatedAt": null,
+  "projectId": "sayac-takip-avm-2026",
+  "mappings": [
+    {
+      "legacy_firebase_uid": "REPLACE_WITH_FIREBASE_UID",
+      "legacy_username": "talip",
+      "legacy_email": "talip@sayacavm.com",
+      "legacy_name": "Talip",
+      "legacy_role": "admin",
+      "legacy_permissions": {
+        "canEnterData": true,
+        "canAddMeter": true,
+        "canAccessInvoices": true
+      },
+      "target_profile_id": "REPLACE_WITH_SUPABASE_PROFILE_UUID",
+      "target_email": "talip@avm.local",
+      "target_role": "technical_manager",
+      "match_status": "matched",
+      "notes": "Ornek yonetici eslestirmesi"
+    },
+    {
+      "legacy_firebase_uid": "REPLACE_WITH_DELETED_OR_PERSONEL_UID",
+      "legacy_username": "ahmet",
+      "legacy_email": "ahmet1@sayacavm.com",
+      "legacy_name": "Ahmet",
+      "legacy_role": "personel",
+      "legacy_permissions": {
+        "canEnterData": true,
+        "canAddMeter": false,
+        "canAccessInvoices": false
+      },
+      "target_profile_id": null,
+      "target_email": null,
+      "target_role": null,
+      "match_status": "unmatched_historical",
+      "notes": "Silinmis veya Supabase hesabi olmayan kullanici; entered_by_id=NULL kalir, entered_by_name korunur."
+    }
+  ],
+  "aliases": {
+    "description": "Tarihsel enteredBy string degerlerini (ornegin kullanici adi farkliliklari veya @sayacavm.com ekleri) kanonik legacy_username veya target_profile_id degerine esler.",
+    "byEnteredByName": {
+      "talip": "REPLACE_WITH_SUPABASE_PROFILE_UUID"
+    }
+  }
+}

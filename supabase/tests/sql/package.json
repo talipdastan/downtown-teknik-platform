@@ -1,0 +1,12 @@
+{
+  "name": "avm-tech-sql-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test run_sql_tests.mjs"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.2.17",
+    "pg": "^8.23.1"
+  }
+}
