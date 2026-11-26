@@ -1,12 +1,12 @@
 {
-  "version": "1.2.1",
-  "buildNumber": 4,
-  "releaseDate": "2026-11-26T13:02:00+03:00",
+  "version": "1.2.2",
+  "buildNumber": 5,
+  "releaseDate": "2026-11-26T13:35:00+03:00",
   "apkUrl": "http://10.16.19.19/download/downtown-teknik.apk",
   "mandatory": false,
   "releaseNotes": [
-    "İş emri atanan arıza kayıtları artık 'Atama Bekleyen' listesinden otomatik düşüp 'İş Emrinde / Sahada' sekmesine taşınıyor.",
-    "Üst koyu kart kişisel iş yükünü, 4'lü operasyon kutuları ise 4 ayrı saha aşamasını (Atama Bekleyen, Sahada, Onay Bekleyen, Kapanan) tekrarsız gösteriyor.",
-    "Supabase Realtime ve otomatik sağlayıcı yenileme ile programı kapatıp açmadan veriler anında güncelleniyor."
+    "Play Store tarzı tarayıcısız Uygulama İçi Otomatik Güncelleyici (%0-%100 otomatik indirme + doğrudan Android Paket Kurucu) aktif edildi.",
+    "AVM Wi-Fi dışında (4.5G / Mobil Veri ile) her yerden güncelleme kontrolü için GitHub Bulut bağlantısı eklendi.",
+    "Shorebird OTA Code Push motoru entegre edildi."
   ]
 }
