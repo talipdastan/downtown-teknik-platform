@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Calendar,
   Camera,
   CheckCircle2,
+  Clock,
   FileDown,
   FileSpreadsheet,
   PauseCircle,
@@ -11,19 +13,27 @@ import {
   PlayCircle,
   Plus,
   Search,
+  Sparkles,
   Trash2,
+  UserCheck,
+  UserPlus,
   X,
 } from 'lucide-react';
 import { createClient } from '@/core/supabase/client';
-import { formatDateTime, WORK_ORDER_STATUS_LABELS } from '@/core/constants';
+import {
+  formatDateTime,
+  PRIORITY_LABELS,
+  WORK_ORDER_STATUS_LABELS,
+} from '@/core/constants';
 import { useDashboardAuth } from '@/core/DashboardContext';
 import { hasModulePermission } from '@/core/permissions';
+import { compressImageForUpload } from '@/core/utils/image-compress';
 import {
   exportExcelXml,
   exportPrintablePdf,
   ReportCell,
 } from '@/core/utils/report-export';
-import { WorkOrderStatus } from '@/types/database';
+import { TicketPriority, WorkOrderStatus } from '@/types/database';
 
 type OpenTicket = {
   id: string;
@@ -35,6 +45,7 @@ type OpenTicket = {
 
 type Dept = { id: string; name: string };
 type Tech = { id: string; full_name: string; department_id: string | null };
+
 type WorkOrderRow = {
   id: string;
   ticket_id: string;
@@ -45,7 +56,19 @@ type WorkOrderRow = {
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
-  tickets?: { ticket_number: string | null; description: string } | null;
+  completed_by: string | null;
+  completer?: { full_name: string } | null;
+  tickets?: {
+    ticket_number: string | null;
+    description: string;
+    priority?: TicketPriority;
+    created_at?: string;
+    resolved_at?: string | null;
+    closed_at?: string | null;
+    custom_location?: string | null;
+    locations?: { name: string; floors?: { name: string } | null } | null;
+    profiles?: { full_name: string } | null;
+  } | null;
   departments?: { name: string } | null;
   equipments?: { code: string; name: string } | null;
   work_order_assignments?: {
@@ -71,6 +94,51 @@ function woBadgeClass(s: WorkOrderStatus): string {
   }
 }
 
+function toIsoDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function calcDurationLabel(startIso?: string | null, endIso?: string | null): string | null {
+  if (!startIso || !endIso) return null;
+  const s = new Date(startIso).getTime();
+  const e = new Date(endIso).getTime();
+  if (Number.isNaN(s) || Number.isNaN(e) || e < s) return null;
+  const mins = Math.round((e - s) / 60000);
+  if (mins < 1) return '< 1 dk';
+  if (mins < 60) return `${mins} dk`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m > 0 ? `${h} sa ${m} dk` : `${h} sa`;
+}
+
+function resolveRequesterName(o: WorkOrderRow): string {
+  return o.tickets?.profiles?.full_name || 'Belirtilmedi';
+}
+
+function resolveRequestOpenDate(o: WorkOrderRow): string {
+  return o.tickets?.created_at || o.created_at;
+}
+
+function resolveCompleterName(o: WorkOrderRow): string {
+  if (o.status !== 'completed') return '-';
+  if (o.completer?.full_name) return o.completer.full_name;
+  const assignedNames = (o.work_order_assignments ?? [])
+    .map((a) => a.profiles?.full_name)
+    .filter(Boolean);
+  return assignedNames.length > 0 ? assignedNames.join(', ') : 'Teknik Ekip';
+}
+
+function resolveLocationLabel(o: WorkOrderRow): string {
+  const loc = o.tickets?.locations;
+  if (loc?.name) {
+    return `${loc.floors?.name ? `${loc.floors.name} - ` : ''}${loc.name}`;
+  }
+  return o.tickets?.custom_location || '-';
+}
+
 export default function WorkTrackingWorkOrdersPage() {
   const { profile } = useDashboardAuth();
   const canManage = hasModulePermission(profile, 'work_tracking', 'manage');
@@ -94,11 +162,14 @@ export default function WorkTrackingWorkOrdersPage() {
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [purgingPhotos, setPurgingPhotos] = useState(false);
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
-  // Filtreler
+  // Filtreler (Durum + Arama + Tarih Aralığı)
   const [statusTab, setStatusTab] = useState<StatusTab>('all');
   const [search, setSearch] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   // Düzenleme modalı
   const [editTarget, setEditTarget] = useState<WorkOrderRow | null>(null);
@@ -135,10 +206,10 @@ export default function WorkTrackingWorkOrdersPage() {
         supabase
           .from('work_orders')
           .select(
-            'id, ticket_id, department_id, status, work_description, waiting_reason, created_at, started_at, completed_at, tickets(ticket_number, description), departments(name), equipments(code, name), work_order_assignments(user_id, profiles!work_order_assignments_user_id_fkey(full_name))'
+            'id, ticket_id, department_id, status, work_description, waiting_reason, created_at, started_at, completed_at, completed_by, completer:profiles!work_orders_completed_by_fkey(full_name), tickets(ticket_number, description, priority, created_at, resolved_at, closed_at, custom_location, locations(name, floors(name)), profiles!tickets_reporter_id_fkey(full_name)), departments(name), equipments(code, name), work_order_assignments(user_id, profiles!work_order_assignments_user_id_fkey(full_name))'
           )
           .order('created_at', { ascending: false })
-          .limit(200),
+          .limit(300),
       ]);
       if (tRes.data) setTickets(tRes.data as OpenTicket[]);
       if (dRes.data) setDepts(dRes.data as Dept[]);
@@ -176,8 +247,44 @@ export default function WorkTrackingWorkOrdersPage() {
     };
   }, [loadAll]);
 
+  function applyDatePreset(preset: 'today' | 'this_week' | 'this_month' | 'last_30' | 'clear') {
+    const now = new Date();
+    if (preset === 'clear') {
+      setStartDate('');
+      setEndDate('');
+      return;
+    }
+    if (preset === 'today') {
+      const iso = toIsoDate(now);
+      setStartDate(iso);
+      setEndDate(iso);
+      return;
+    }
+    if (preset === 'this_week') {
+      const day = now.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      const monday = new Date(now);
+      monday.setDate(now.getDate() + diff);
+      setStartDate(toIsoDate(monday));
+      setEndDate(toIsoDate(now));
+      return;
+    }
+    if (preset === 'this_month') {
+      setStartDate(toIsoDate(new Date(now.getFullYear(), now.getMonth(), 1)));
+      setEndDate(toIsoDate(now));
+      return;
+    }
+    const prev = new Date(now);
+    prev.setDate(prev.getDate() - 30);
+    setStartDate(toIsoDate(prev));
+    setEndDate(toIsoDate(now));
+  }
+
   const filteredOrders = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const startMs = startDate ? new Date(`${startDate}T00:00:00`).getTime() : null;
+    const endMs = endDate ? new Date(`${endDate}T23:59:59`).getTime() : null;
+
     return orders.filter((o) => {
       if (statusTab === 'active' && !['assigned', 'in_progress'].includes(o.status)) {
         return false;
@@ -186,21 +293,35 @@ export default function WorkTrackingWorkOrdersPage() {
       if (statusTab === 'completed' && !['completed', 'cancelled'].includes(o.status)) {
         return false;
       }
+
+      if (startMs !== null || endMs !== null) {
+        const refDateMs = new Date(resolveRequestOpenDate(o)).getTime();
+        if (startMs !== null && refDateMs < startMs) return false;
+        if (endMs !== null && refDateMs > endMs) return false;
+      }
+
       if (!q) return true;
       const techNames = (o.work_order_assignments ?? [])
         .map((a) => a.profiles?.full_name ?? '')
         .join(' ')
         .toLowerCase();
+      const requester = resolveRequesterName(o).toLowerCase();
+      const completer = resolveCompleterName(o).toLowerCase();
+      const loc = resolveLocationLabel(o).toLowerCase();
+
       return (
         (o.tickets?.ticket_number ?? '').toLowerCase().includes(q) ||
         (o.tickets?.description ?? '').toLowerCase().includes(q) ||
         (o.work_description ?? '').toLowerCase().includes(q) ||
         (o.departments?.name ?? '').toLowerCase().includes(q) ||
         (o.equipments?.name ?? '').toLowerCase().includes(q) ||
-        techNames.includes(q)
+        techNames.includes(q) ||
+        requester.includes(q) ||
+        completer.includes(q) ||
+        loc.includes(q)
       );
     });
-  }, [orders, statusTab, search]);
+  }, [orders, statusTab, search, startDate, endDate]);
 
   async function handleAssign(e: React.FormEvent) {
     e.preventDefault();
@@ -273,12 +394,13 @@ export default function WorkTrackingWorkOrdersPage() {
       const uid = uRes.user?.id;
 
       if (uid && completePhotos.length > 0) {
-        for (const file of completePhotos) {
-          const safe = (file.name || 'after.jpg').replace(/[^a-zA-Z0-9._-]/g, '_');
+        for (const rawFile of completePhotos) {
+          const file = await compressImageForUpload(rawFile);
+          const safe = (file.name || 'after.webp').replace(/[^a-zA-Z0-9._-]/g, '_');
           const path = `${uid}/${completeTarget.id}/${Date.now()}_${safe}`;
           const { error: upErr } = await supabase.storage
             .from('work-attachments')
-            .upload(path, file, { contentType: file.type || 'image/jpeg', upsert: false });
+            .upload(path, file, { contentType: file.type || 'image/webp', upsert: false });
           if (upErr) throw upErr;
 
           const { error: attErr } = await supabase.from('attachments').insert({
@@ -286,7 +408,7 @@ export default function WorkTrackingWorkOrdersPage() {
             uploaded_by: uid,
             file_path: path,
             file_name: file.name,
-            mime_type: file.type || 'image/jpeg',
+            mime_type: file.type || 'image/webp',
             attachment_type: 'after',
           });
           if (attErr) throw attErr;
@@ -303,7 +425,7 @@ export default function WorkTrackingWorkOrdersPage() {
         type: 'ok',
         text:
           completePhotos.length > 0
-            ? `İş emri ${completePhotos.length} çözüm fotoğrafıyla tamamlandı ve onaya gönderildi.`
+            ? `İş emri ${completePhotos.length} sıkıştırılmış çözüm fotoğrafıyla tamamlandı ve onaya gönderildi.`
             : 'İş emri tamamlandı ve onaya gönderildi.',
       });
       setCompleteTarget(null);
@@ -317,6 +439,33 @@ export default function WorkTrackingWorkOrdersPage() {
       });
     } finally {
       setCompleting(false);
+    }
+  }
+
+  async function handlePurgeExpiredPhotos() {
+    setPurgingPhotos(true);
+    setMsg(null);
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase.rpc('rpc_purge_expired_closed_photos', {
+        p_retention_days: 15,
+      });
+      if (error) throw error;
+      const count = typeof data === 'number' ? data : 0;
+      setMsg({
+        type: 'ok',
+        text:
+          count > 0
+            ? `Kapanmasının üzerinden 15 gün geçmiş işlere ait ${count} adet fotoğraf veritabanı ve depolama alanından temizlendi.`
+            : 'Depolama temiz: Kapanmasının üzerinden 15 gün geçmiş silinecek fotoğraf bulunmuyor.',
+      });
+    } catch (err) {
+      setMsg({
+        type: 'err',
+        text: err instanceof Error ? err.message : 'Fotoğraf temizliği çalıştırılamadı.',
+      });
+    } finally {
+      setPurgingPhotos(false);
     }
   }
 
@@ -379,13 +528,17 @@ export default function WorkTrackingWorkOrdersPage() {
   function buildReportData() {
     const headers = [
       'Arıza No',
+      'Mahal / Konum',
+      'İstek Açan',
+      'Açılış Tarihi',
       'Departman',
       'Atanan Teknisyenler',
+      'İsteği Tamamlayan',
+      'Tamamlanma Tarihi',
+      'Çözüm Süresi',
       'Ekipman',
-      'Açıklama',
+      'Açıklama / Talimat',
       'Durum',
-      'Bekleme Nedeni',
-      'Oluşturma',
     ];
     const reportRows: ReportCell[][] = filteredOrders.map((o) => {
       const techNames =
@@ -393,15 +546,22 @@ export default function WorkTrackingWorkOrdersPage() {
           .map((a) => a.profiles?.full_name)
           .filter(Boolean)
           .join(', ') || '-';
+      const openDate = resolveRequestOpenDate(o);
+      const duration = calcDurationLabel(openDate, o.completed_at) ?? '-';
+
       return [
         o.tickets?.ticket_number ?? '-',
+        resolveLocationLabel(o),
+        resolveRequesterName(o),
+        formatDateTime(openDate),
         o.departments?.name ?? '-',
         techNames,
+        resolveCompleterName(o),
+        o.completed_at ? formatDateTime(o.completed_at) : '-',
+        duration,
         o.equipments ? `${o.equipments.code} - ${o.equipments.name}` : '-',
         o.work_description ?? o.tickets?.description ?? '-',
         WORK_ORDER_STATUS_LABELS[o.status] ?? o.status,
-        o.waiting_reason ?? '-',
-        formatDateTime(o.created_at),
       ];
     });
     return { headers, reportRows };
@@ -409,10 +569,14 @@ export default function WorkTrackingWorkOrdersPage() {
 
   function handleExportExcel() {
     const { headers, reportRows } = buildReportData();
+    const dateLabel =
+      startDate || endDate
+        ? ` (${startDate || 'Başlangıç'} - ${endDate || 'Bugün'})`
+        : '';
     exportExcelXml({
-      fileName: `avm_tech_is_emirleri_${new Date().toISOString().slice(0, 10)}.xls`,
+      fileName: `downtown_teknik_is_emirleri_${new Date().toISOString().slice(0, 10)}.xls`,
       sheetName: 'Is_Emirleri',
-      title: 'DOWNTOWN TEKNİK · İş Emirleri Listesi',
+      title: `DOWNTOWN TEKNİK · İş Emirleri & Tamamlanma Raporu${dateLabel}`,
       subtitle: `${filteredOrders.length} iş emri listeleniyor`,
       headers,
       rows: reportRows,
@@ -421,9 +585,13 @@ export default function WorkTrackingWorkOrdersPage() {
 
   function handleExportPdf() {
     const { headers, reportRows } = buildReportData();
+    const dateLabel =
+      startDate || endDate
+        ? `Tarih Aralığı: ${startDate || 'Tümü'} – ${endDate || 'Bugün'}`
+        : 'Tüm Dönemler';
     exportPrintablePdf({
-      title: 'İş Emirleri & Teknisyen Atama Raporu',
-      subtitle: `${filteredOrders.length} kayıt listeleniyor`,
+      title: 'İş Emirleri, İstek Açan & Tamamlayan Raporu',
+      subtitle: `${dateLabel} · ${filteredOrders.length} kayıt`,
       kpis: [
         { label: 'Toplam İş Emri', value: String(filteredOrders.length), tone: 'navy' },
         {
@@ -451,6 +619,7 @@ export default function WorkTrackingWorkOrdersPage() {
 
   return (
     <div className="space-y-5">
+      {/* Üst Başlık ve Raporlama Butonları */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
@@ -460,33 +629,47 @@ export default function WorkTrackingWorkOrdersPage() {
             İş Emirleri & Teknisyen Atama
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Arızalara departman ve teknisyen atayın; başlatma, bekletme ve fotoğraflı tamamlama
-            süreçlerini yönetin.
+            İstek açan, açılış tarihi, atanan ekip, işi tamamlayan personel ve tamamlanma süresiyle
+            detaylı iş emri yönetimi.
           </p>
         </div>
 
-        {canReports && (
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {canManage && (
             <button
               type="button"
-              onClick={handleExportExcel}
-              disabled={filteredOrders.length === 0}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-40"
+              onClick={handlePurgeExpiredPhotos}
+              disabled={purgingPhotos}
+              title="Kapanan işlerde 15 günü geçen fotoğrafları veritabanı ve depolamadan temizler"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-bold text-cyan-900 transition hover:bg-cyan-100 disabled:opacity-40"
             >
-              <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-700" />
-              Excel İndir (.xls)
+              <Sparkles className="h-3.5 w-3.5 text-turquoise" />
+              {purgingPhotos ? 'Temizleniyor...' : '15 Günlük Fotoğraf Temizliği'}
             </button>
-            <button
-              type="button"
-              onClick={handleExportPdf}
-              disabled={filteredOrders.length === 0}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2 text-xs font-bold text-rose-800 transition hover:bg-rose-100 disabled:opacity-40"
-            >
-              <FileDown className="h-3.5 w-3.5 text-rose-700" />
-              PDF Rapor İndir
-            </button>
-          </div>
-        )}
+          )}
+          {canReports && (
+            <>
+              <button
+                type="button"
+                onClick={handleExportExcel}
+                disabled={filteredOrders.length === 0}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-40"
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-700" />
+                Excel İndir (.xls)
+              </button>
+              <button
+                type="button"
+                onClick={handleExportPdf}
+                disabled={filteredOrders.length === 0}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2 text-xs font-bold text-rose-800 transition hover:bg-rose-100 disabled:opacity-40"
+              >
+                <FileDown className="h-3.5 w-3.5 text-rose-700" />
+                PDF Rapor İndir
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {msg && (
@@ -507,8 +690,13 @@ export default function WorkTrackingWorkOrdersPage() {
           onSubmit={handleAssign}
           className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
         >
-          <div className="text-xs font-extrabold uppercase tracking-wider text-navy">
-            Yeni İş Emri Oluştur / Teknisyen Ata
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-xs font-extrabold uppercase tracking-wider text-navy">
+              Yeni İş Emri Oluştur / Teknisyen Ata ({tickets.length} Atama Bekleyen Arıza)
+            </div>
+            <span className="text-[11px] font-semibold text-slate-400">
+              * Fotoğraflar otomatik ~100 KB boyutuna sıkıştırılır, kapanan işlerin fotoğrafları 15 gün sonra otomatik silinir.
+            </span>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             <select
@@ -517,7 +705,7 @@ export default function WorkTrackingWorkOrdersPage() {
               onChange={(e) => setTicketId(e.target.value)}
               className="rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm text-slate-800 focus:border-navy focus:outline-none"
             >
-              <option value="">Arıza Kaydı Seçiniz *</option>
+              <option value="">Atama Bekleyen Arıza Kaydı Seçiniz *</option>
               {tickets.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.ticket_number ?? t.id} – {t.description.slice(0, 65)}
@@ -582,66 +770,134 @@ export default function WorkTrackingWorkOrdersPage() {
         </form>
       )}
 
-      {/* Filtre & Arama Barı */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3">
-        <div className="flex flex-wrap gap-2">
-          {(
-            [
-              ['all', `Tümü (${orders.length})`],
+      {/* Filtre, Tarih Aralığı & Arama Barı */}
+      <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Durum Sekmeleri */}
+          <div className="flex flex-wrap gap-1.5">
+            {(
               [
-                'active',
-                `Aktif (${
-                  orders.filter((o) => ['assigned', 'in_progress'].includes(o.status)).length
-                })`,
-              ],
-              ['waiting', `Beklemede (${orders.filter((o) => o.status === 'waiting').length})`],
-              [
-                'completed',
-                `Tamamlanan (${
-                  orders.filter((o) => ['completed', 'cancelled'].includes(o.status)).length
-                })`,
-              ],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setStatusTab(key)}
-              className={`rounded-full px-4 py-1.5 text-xs font-bold transition ${
-                statusTab === key
-                  ? 'bg-navy text-white shadow-sm'
-                  : 'border border-slate-200 bg-canvas text-slate-700 hover:bg-slate-100'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+                ['all', `Tümü (${orders.length})`],
+                [
+                  'active',
+                  `Aktif (${
+                    orders.filter((o) => ['assigned', 'in_progress'].includes(o.status)).length
+                  })`,
+                ],
+                ['waiting', `Beklemede (${orders.filter((o) => o.status === 'waiting').length})`],
+                [
+                  'completed',
+                  `Tamamlanan (${
+                    orders.filter((o) => ['completed', 'cancelled'].includes(o.status)).length
+                  })`,
+                ],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setStatusTab(key)}
+                className={`rounded-full px-4 py-1.5 text-xs font-bold transition ${
+                  statusTab === key
+                    ? 'bg-navy text-white shadow-sm'
+                    : 'border border-slate-200 bg-canvas text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Arama */}
+          <div className="relative min-w-[260px] flex-1 sm:max-w-xs">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Arıza no, istek açan, tamamlayan, mahal ara..."
+              className="w-full rounded-xl border border-slate-200 bg-canvas py-1.5 pl-9 pr-3 text-sm focus:border-navy focus:outline-none"
+            />
+          </div>
         </div>
 
-        <div className="relative min-w-[240px]">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Arıza no, teknisyen, departman ara..."
-            className="w-full rounded-xl border border-slate-200 bg-canvas py-1.5 pl-9 pr-3 text-sm focus:border-navy focus:outline-none"
-          />
+        {/* Rapor & Liste İçin Tarih Aralığı Seçici */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 inline-flex items-center gap-1 text-xs font-extrabold text-navy">
+              <Calendar className="h-3.5 w-3.5 text-turquoise" />
+              Rapor Tarihi:
+            </span>
+            <button
+              type="button"
+              onClick={() => applyDatePreset('today')}
+              className="rounded-lg border border-slate-200 bg-canvas px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-navy-soft hover:text-navy"
+            >
+              Bugün
+            </button>
+            <button
+              type="button"
+              onClick={() => applyDatePreset('this_week')}
+              className="rounded-lg border border-slate-200 bg-canvas px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-navy-soft hover:text-navy"
+            >
+              Bu Hafta
+            </button>
+            <button
+              type="button"
+              onClick={() => applyDatePreset('this_month')}
+              className="rounded-lg border border-slate-200 bg-canvas px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-navy-soft hover:text-navy"
+            >
+              Bu Ay
+            </button>
+            <button
+              type="button"
+              onClick={() => applyDatePreset('last_30')}
+              className="rounded-lg border border-slate-200 bg-canvas px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-navy-soft hover:text-navy"
+            >
+              Son 30 Gün
+            </button>
+            {(startDate || endDate) && (
+              <button
+                type="button"
+                onClick={() => applyDatePreset('clear')}
+                className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-bold text-red-700 hover:bg-red-100"
+              >
+                Tüm Tarihler
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-600">
+            <span>Başlangıç:</span>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-canvas px-2.5 py-1 text-xs font-bold text-slate-800 focus:border-navy focus:outline-none"
+            />
+            <span>Bitiş:</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="rounded-xl border border-slate-200 bg-canvas px-2.5 py-1 text-xs font-bold text-slate-800 focus:border-navy focus:outline-none"
+            />
+          </div>
         </div>
       </div>
 
-      {/* İş Emirleri Tablosu */}
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      {/* Zenginleştirilmiş İş Emirleri Tablosu */}
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-slate-200 bg-canvas text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
               <tr>
-                <th className="px-4 py-3">Arıza No</th>
-                <th className="px-4 py-3">Departman & Teknisyen</th>
-                <th className="px-4 py-3">Ekipman</th>
-                <th className="px-4 py-3">Açıklama</th>
+                <th className="px-4 py-3">Arıza No & Mahal</th>
+                <th className="px-4 py-3">İstek Açan & Açılış Tarihi</th>
+                <th className="px-4 py-3">Departman & Atanan</th>
+                <th className="px-4 py-3">İsteği Tamamlayan & Bitiş Tarihi</th>
+                <th className="px-4 py-3">Ekipman & Açıklama</th>
                 <th className="px-4 py-3">Durum</th>
-                <th className="px-4 py-3">Tarih</th>
                 <th className="px-4 py-3 text-right">İşlem</th>
               </tr>
             </thead>
@@ -649,7 +905,7 @@ export default function WorkTrackingWorkOrdersPage() {
               {filteredOrders.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-10 text-center text-slate-500">
-                    {loading ? 'Yükleniyor...' : 'Bu filtrede iş emri bulunamadı.'}
+                    {loading ? 'Yükleniyor...' : 'Seçili tarih ve filtrede iş emri bulunamadı.'}
                   </td>
                 </tr>
               ) : (
@@ -659,6 +915,13 @@ export default function WorkTrackingWorkOrdersPage() {
                       .map((a) => a.profiles?.full_name)
                       .filter(Boolean)
                       .join(', ') || 'Atanmadı';
+                  const requesterName = resolveRequesterName(o);
+                  const openDate = resolveRequestOpenDate(o);
+                  const completerName = resolveCompleterName(o);
+                  const durationLabel = calcDurationLabel(openDate, o.completed_at);
+                  const locationLabel = resolveLocationLabel(o);
+                  const priority = o.tickets?.priority;
+
                   const isAssignedToMe = (o.work_order_assignments ?? []).some(
                     (a) => a.user_id === profile?.id
                   );
@@ -668,22 +931,86 @@ export default function WorkTrackingWorkOrdersPage() {
                       ['assigned', 'waiting', 'in_progress'].includes(o.status)) ||
                     canEditWO ||
                     canDeleteWO;
+
                   return (
-                    <tr key={o.id} className="align-top hover:bg-canvas/60">
-                      <td className="whitespace-nowrap px-4 py-3 font-extrabold text-navy">
-                        {o.tickets?.ticket_number ?? '-'}
+                    <tr key={o.id} className="align-top transition hover:bg-canvas/60">
+                      {/* 1. Arıza No & Mahal */}
+                      <td className="whitespace-nowrap px-4 py-3.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-extrabold text-navy">
+                            {o.tickets?.ticket_number ?? '-'}
+                          </span>
+                          {priority === 'urgent' && (
+                            <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-extrabold text-red-700">
+                              Acil
+                            </span>
+                          )}
+                          {priority === 'priority' && (
+                            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-extrabold text-amber-800">
+                              Öncelikli
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-0.5 max-w-[180px] truncate text-xs font-medium text-slate-500">
+                          {locationLabel}
+                        </div>
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="font-bold text-slate-800">
+
+                      {/* 2. İstek Açan & Açılış Tarihi */}
+                      <td className="whitespace-nowrap px-4 py-3.5">
+                        <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                          <UserPlus className="h-3.5 w-3.5 text-sky-600" />
+                          <span>{requesterName}</span>
+                        </div>
+                        <div className="mt-0.5 pl-5 text-xs text-slate-500">
+                          {formatDateTime(openDate)}
+                        </div>
+                      </td>
+
+                      {/* 3. Departman & Atanan Teknisyen */}
+                      <td className="px-4 py-3.5">
+                        <div className="font-bold text-navy">
                           {o.departments?.name ?? '-'}
                         </div>
-                        <div className="text-xs text-slate-500">{techNames}</div>
+                        <div className="mt-0.5 text-xs font-medium text-slate-500">
+                          {techNames}
+                        </div>
                       </td>
-                      <td className="px-4 py-3 text-xs text-slate-600">
-                        {o.equipments ? `${o.equipments.code} - ${o.equipments.name}` : '-'}
+
+                      {/* 4. İsteği Tamamlayan & Tamamlanma Tarihi */}
+                      <td className="whitespace-nowrap px-4 py-3.5">
+                        {o.status === 'completed' ? (
+                          <div>
+                            <div className="flex items-center gap-1.5 font-bold text-emerald-700">
+                              <UserCheck className="h-3.5 w-3.5 text-emerald-600" />
+                              <span>{completerName}</span>
+                            </div>
+                            <div className="mt-0.5 pl-5 text-xs text-slate-500">
+                              {o.completed_at ? formatDateTime(o.completed_at) : '-'}
+                            </div>
+                            {durationLabel && (
+                              <div className="mt-1 inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[10.5px] font-extrabold text-emerald-800">
+                                <Clock className="h-3 w-3" />
+                                Süre: {durationLabel}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-500">
+                            <Clock className="h-3 w-3" />
+                            Devam Ediyor
+                          </span>
+                        )}
                       </td>
-                      <td className="max-w-[260px] px-4 py-3">
-                        <div className="text-slate-700">
+
+                      {/* 5. Ekipman & Açıklama */}
+                      <td className="max-w-[260px] px-4 py-3.5">
+                        {o.equipments && (
+                          <div className="mb-0.5 text-xs font-extrabold text-turquoise">
+                            {o.equipments.code} - {o.equipments.name}
+                          </div>
+                        )}
+                        <div className="line-clamp-2 text-xs font-medium text-slate-700">
                           {o.work_description ?? o.tickets?.description ?? '-'}
                         </div>
                         {o.waiting_reason && (
@@ -692,7 +1019,9 @@ export default function WorkTrackingWorkOrdersPage() {
                           </div>
                         )}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3">
+
+                      {/* 6. Durum */}
+                      <td className="whitespace-nowrap px-4 py-3.5">
                         <span
                           className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-extrabold ${woBadgeClass(
                             o.status
@@ -701,10 +1030,9 @@ export default function WorkTrackingWorkOrdersPage() {
                           {WORK_ORDER_STATUS_LABELS[o.status] ?? o.status}
                         </span>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">
-                        {formatDateTime(o.created_at)}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3">
+
+                      {/* 7. İşlem */}
+                      <td className="whitespace-nowrap px-4 py-3.5">
                         {hasAnyRowAction ? (
                           <div className="flex flex-wrap items-center justify-end gap-1.5">
                             {canRunStatusActions &&
@@ -814,37 +1142,23 @@ export default function WorkTrackingWorkOrdersPage() {
             <div className="rounded-xl border border-dashed border-slate-300 bg-canvas p-3">
               <label className="flex cursor-pointer items-center gap-2 text-xs font-bold text-navy">
                 <Camera className="h-4 w-4 text-turquoise" />
-                <span>Çözüm Sonrası Fotoğraf Ekle (Opsiyonel)</span>
+                <span>Çözüm Sonrası Fotoğraf Ekle (Otomatik ~100 KB Sıkıştırmalı)</span>
                 <input
                   type="file"
                   multiple
-                  accept="image/jpeg,image/png,image/webp"
-                  onChange={(e) => {
-                    const list = Array.from(e.target.files ?? []);
-                    if (list.length > 0) setCompletePhotos((p) => [...p, ...list]);
-                    e.target.value = '';
-                  }}
+                  accept="image/*"
+                  onChange={(e) =>
+                    setCompletePhotos(Array.from(e.target.files ?? []).slice(0, 5))
+                  }
                   className="hidden"
                 />
               </label>
               {completePhotos.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {completePhotos.map((f, idx) => (
-                    <span
-                      key={`${f.name}_${idx}`}
-                      className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 shadow-sm"
-                    >
-                      {f.name}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setCompletePhotos((p) => p.filter((_, i) => i !== idx))
-                        }
-                        className="text-red-600"
-                      >
-                        ×
-                      </button>
-                    </span>
+                <div className="mt-2 space-y-1 text-xs text-slate-600">
+                  {completePhotos.map((f, i) => (
+                    <div key={i} className="truncate">
+                      • {f.name}
+                    </div>
                   ))}
                 </div>
               )}
@@ -854,23 +1168,23 @@ export default function WorkTrackingWorkOrdersPage() {
               <button
                 type="button"
                 onClick={() => setCompleteTarget(null)}
-                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700"
+                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600"
               >
                 Vazgeç
               </button>
               <button
                 type="submit"
                 disabled={completing}
-                className="rounded-xl bg-emerald-600 px-5 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
               >
-                {completing ? 'Tamamlanıyor...' : 'Tamamla ve Onaya Gönder'}
+                {completing ? 'Gönderiliyor...' : 'Tamamla ve Onaya Gönder'}
               </button>
             </div>
           </form>
         </div>
       )}
 
-      {/* İş Emri Düzenle Modalı */}
+      {/* İş Emri Düzenleme Modalı */}
       {editTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
           <form
@@ -894,7 +1208,6 @@ export default function WorkTrackingWorkOrdersPage() {
               <div>
                 <label className="mb-1 block text-xs font-bold text-slate-600">Departman</label>
                 <select
-                  required
                   value={editDeptId}
                   onChange={(e) => setEditDeptId(e.target.value)}
                   className="w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm"
@@ -936,14 +1249,14 @@ export default function WorkTrackingWorkOrdersPage() {
 
             {editStatus === 'waiting' && (
               <div>
-                <label className="mb-1 block text-xs font-bold text-slate-600">
+                <label className="mb-1 block text-xs font-bold text-orange-700">
                   Bekleme Gerekçesi
                 </label>
                 <input
                   type="text"
                   value={editWaitingReason}
                   onChange={(e) => setEditWaitingReason(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm"
+                  className="w-full rounded-xl border border-orange-200 bg-orange-50/50 px-3 py-2 text-sm"
                 />
               </div>
             )}
@@ -952,16 +1265,16 @@ export default function WorkTrackingWorkOrdersPage() {
               <button
                 type="button"
                 onClick={() => setEditTarget(null)}
-                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700"
+                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600"
               >
                 Vazgeç
               </button>
               <button
                 type="submit"
                 disabled={savingEdit}
-                className="rounded-xl bg-navy px-5 py-2 text-xs font-bold text-white hover:bg-navy-hover disabled:opacity-50"
+                className="rounded-xl bg-navy px-4 py-2 text-xs font-bold text-white hover:bg-navy-hover disabled:opacity-50"
               >
-                {savingEdit ? 'Kaydediliyor...' : 'Kaydet'}
+                {savingEdit ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
               </button>
             </div>
           </form>

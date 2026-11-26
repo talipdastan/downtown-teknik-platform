@@ -23,6 +23,7 @@ import {
   exportPrintablePdf,
   ReportCell,
 } from '@/core/utils/report-export';
+import { compressImageForUpload } from '@/core/utils/image-compress';
 import {
   Equipment,
   TicketPriority,
@@ -274,16 +275,17 @@ export default function WorkTrackingTicketsPage() {
   async function uploadTicketPhoto(
     ticketId: string,
     uid: string,
-    file: File,
+    rawFile: File,
     attType: 'before' | 'after' | 'general'
   ) {
     const supabase = createClient();
-    const safe = sanitizeFileName(file.name || 'foto.jpg');
+    const file = await compressImageForUpload(rawFile);
+    const safe = sanitizeFileName(file.name || 'foto.webp');
     const path = `${uid}/${ticketId}/${Date.now()}_${safe}`;
 
     const { error: upErr } = await supabase.storage
       .from('work-attachments')
-      .upload(path, file, { contentType: file.type || 'image/jpeg', upsert: false });
+      .upload(path, file, { contentType: file.type || 'image/webp', upsert: false });
     if (upErr) throw upErr;
 
     const { error: dbErr } = await supabase.from('attachments').insert({
@@ -291,7 +293,7 @@ export default function WorkTrackingTicketsPage() {
       uploaded_by: uid,
       file_path: path,
       file_name: file.name,
-      mime_type: file.type || 'image/jpeg',
+      mime_type: file.type || 'image/webp',
       attachment_type: attType,
     });
     if (dbErr) throw dbErr;

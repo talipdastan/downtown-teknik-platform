@@ -7,6 +7,8 @@ class AppUtils {
     'jpeg': 'image/jpeg',
     'png': 'image/png',
     'webp': 'image/webp',
+    'heic': 'image/jpeg', // Samsung HEIC fotoğraflar image_picker tarafından JPEG'e dönüştürülür
+    'heif': 'image/jpeg',
     'pdf': 'application/pdf',
   };
 

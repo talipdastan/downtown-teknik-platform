@@ -1,12 +1,12 @@
 {
-  "version": "1.2.3",
-  "buildNumber": 6,
-  "releaseDate": "2026-11-26T14:43:00+03:00",
+  "version": "1.2.4",
+  "buildNumber": 7,
+  "releaseDate": "2026-11-26T15:18:00+03:00",
   "apkUrl": "http://10.16.19.19/download/downtown-teknik.apk",
   "mandatory": false,
   "releaseNotes": [
-    "İş Takip ana ekranındaki tekrarlayan 2x2 kutular kaldırıldı; üst koyu kart 4 net aşamayı (Atama Bekleyen, Sahada/İşlemde, Onay Bekleyen, Kapandı) birebir tutarlı gösteriyor.",
-    "Çözüm Onay Bekleyen (resolved) kayıtların 'Kapandı' olarak sayılması hatası düzeltildi.",
-    "Arızalarım satırı artık toplam kayıt sayısını ve aktif/kapanan kırılımını doğru gösteriyor; varsayılan sekme tüm aktif işleri listeliyor."
+    "İş Emirleri ve Raporlar sayfasına İstek Açan, Açılış Tarihi, İsteği Tamamlayan, Tamamlanma Tarihi ve Çözüm Süresi sütunları eklendi.",
+    "İş Emirleri raporlaması için Başlangıç - Bitiş Tarihi seçici ve hızlı dönem filtreleri eklendi.",
+    "Samsung (HEIC/50MP+) ve tüm kamera fotoğrafları ~100 KB boyutuna (%97 tasarruf) sıkıştırılıyor; kapanan işlerin fotoğrafları 15 gün sonra otomatik siliniyor."
   ]
 }

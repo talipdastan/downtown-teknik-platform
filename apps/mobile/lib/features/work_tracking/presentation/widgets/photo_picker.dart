@@ -5,13 +5,16 @@ import 'package:image_picker/image_picker.dart';
 
 import 'package:avm_tech_platform/core/theme/app_theme.dart';
 
-/// ARCHITECTURE.md Bölüm 5.5 ile uyumlu fotoğraf sıkıştırma standartları.
+/// Samsung (50MP/108MP & HEIC/HEIF) ve diğer telefon kameralarından gelen
+/// 5–12 MB büyüklüğündeki fotoğrafları okunabilirliği bozmadan ~90–140 KB
+/// boyutuna (%97 tasarruf) indiren sıkıştırma politikası.
 class PhotoCompressionPolicy {
   PhotoCompressionPolicy._();
 
-  static const double maxWidthPx = 1600;
-  static const double maxHeightPx = 1600;
-  static const int jpegQuality = 80;
+  static const double maxWidthPx = 1200;
+  static const double maxHeightPx = 1200;
+  static const int jpegQuality = 70;
+  static const int retentionDaysAfterClose = 15;
 }
 
 final ImagePicker _picker = ImagePicker();

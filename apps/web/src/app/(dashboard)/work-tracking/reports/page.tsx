@@ -9,7 +9,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { createClient } from '@/core/supabase/client';
-import { formatDate, PRIORITY_LABELS, TICKET_STATUS_LABELS } from '@/core/constants';
+import { formatDate, formatDateTime, PRIORITY_LABELS, TICKET_STATUS_LABELS } from '@/core/constants';
 import {
   exportExcelXml,
   exportPrintablePdf,
@@ -19,6 +19,10 @@ import { TicketPriority, TicketStatus, WorkOrderStatus } from '@/types/database'
 
 type ReportRow = {
   ticket_number: string;
+  requester_name: string;
+  created_at: string;
+  completer_name: string;
+  completed_at: string;
   department: string;
   floor: string;
   location: string;
@@ -26,7 +30,6 @@ type ReportRow = {
   category: string;
   priority: string;
   status: string;
-  created_at: string;
   response_minutes: number | null;
   resolution_minutes: number | null;
 };
@@ -36,6 +39,7 @@ type RawWO = {
   status: WorkOrderStatus;
   started_at: string | null;
   completed_at: string | null;
+  completer?: { full_name: string } | null;
   departments?: { name: string } | null;
   work_order_assignments?: {
     user_id: string;
@@ -52,6 +56,7 @@ type RawReportTicket = {
   closed_at: string | null;
   custom_location: string | null;
   custom_category: string | null;
+  profiles?: { full_name: string } | null;
   locations?: { name: string; floors?: { name: string } | null } | null;
   categories?: { name: string; departments?: { name: string } | null } | null;
   equipments?: { code: string; name: string } | null;
@@ -144,7 +149,7 @@ export default function WorkTrackingReportsPage() {
       let q = supabase
         .from('tickets')
         .select(
-          'ticket_number, priority, status, created_at, resolved_at, closed_at, custom_location, custom_category, locations(name, floors(name)), categories(name, departments(name)), equipments(code, name), work_orders(id, status, started_at, completed_at, departments(name), work_order_assignments(user_id, profiles!work_order_assignments_user_id_fkey(full_name)))'
+          'ticket_number, priority, status, created_at, resolved_at, closed_at, custom_location, custom_category, profiles!tickets_reporter_id_fkey(full_name), locations(name, floors(name)), categories(name, departments(name)), equipments(code, name), work_orders(id, status, started_at, completed_at, completer:profiles!work_orders_completed_by_fkey(full_name), departments(name), work_order_assignments(user_id, profiles!work_order_assignments_user_id_fkey(full_name)))'
         )
         .order('created_at', { ascending: false })
         .limit(500);
@@ -205,12 +210,25 @@ export default function WorkTrackingReportsPage() {
         .filter((x): x is string => Boolean(x))
         .sort();
       const firstStart = starts[0] ?? null;
-      const doneAt = d.resolved_at ?? d.closed_at ?? null;
+      const completedWo = wos.find((w) => w.status === 'completed') ?? wos[0] ?? null;
+      const doneAt = completedWo?.completed_at ?? d.resolved_at ?? d.closed_at ?? null;
       const deptName =
         wos[0]?.departments?.name ?? d.categories?.departments?.name ?? 'Atanmamış';
 
+      const assignedNames = (completedWo?.work_order_assignments ?? [])
+        .map((a) => a.profiles?.full_name)
+        .filter(Boolean)
+        .join(', ');
+      const completerName =
+        completedWo?.completer?.full_name ||
+        (doneAt ? assignedNames || 'Teknik Ekip' : '-');
+
       return {
         ticket_number: d.ticket_number ?? '-',
+        requester_name: d.profiles?.full_name ?? '-',
+        created_at: formatDateTime(d.created_at),
+        completer_name: completerName,
+        completed_at: doneAt ? formatDateTime(doneAt) : '-',
         department: deptName,
         floor: d.locations?.floors?.name ?? '-',
         location: d.locations?.name ?? d.custom_location ?? '-',
@@ -218,7 +236,6 @@ export default function WorkTrackingReportsPage() {
         category: d.categories?.name ?? d.custom_category ?? '-',
         priority: PRIORITY_LABELS[d.priority] ?? d.priority,
         status: TICKET_STATUS_LABELS[d.status] ?? d.status,
-        created_at: formatDate(d.created_at),
         response_minutes: diffMinutes(d.created_at, firstStart),
         resolution_minutes: diffMinutes(d.created_at, doneAt),
       };
@@ -318,7 +335,11 @@ export default function WorkTrackingReportsPage() {
 
   function buildExportData() {
     const headers = [
-      'Kayıt No',
+      'Arıza No',
+      'İstek Açan',
+      'Açılış Tarihi',
+      'İsteği Tamamlayan',
+      'Tamamlanma Tarihi',
       'Departman',
       'Kat',
       'Mahal',
@@ -326,12 +347,15 @@ export default function WorkTrackingReportsPage() {
       'Kategori',
       'Öncelik',
       'Durum',
-      'Tarih',
       'Müdahale (dk)',
       'Çözüm (dk)',
     ];
     const exportRows: ReportCell[][] = rows.map((r) => [
       r.ticket_number,
+      r.requester_name,
+      r.created_at,
+      r.completer_name,
+      r.completed_at,
       r.department,
       r.floor,
       r.location,
@@ -339,7 +363,6 @@ export default function WorkTrackingReportsPage() {
       r.category,
       r.priority,
       r.status,
-      r.created_at,
       r.response_minutes ?? '-',
       r.resolution_minutes ?? '-',
     ]);
