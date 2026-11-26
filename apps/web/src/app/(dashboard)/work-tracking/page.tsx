@@ -4,12 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
-  Briefcase,
   Calendar,
-  CheckCircle2,
-  ClipboardCheck,
   Clock,
-  FileText,
   Layers,
   RefreshCw,
 } from 'lucide-react';
@@ -17,16 +13,7 @@ import { createClient } from '@/core/supabase/client';
 import { formatDateTime, PRIORITY_LABELS, TICKET_STATUS_LABELS } from '@/core/constants';
 import { useDashboardAuth } from '@/core/DashboardContext';
 import { canAccessDashboardPath } from '@/core/moduleRegistry';
-import { TicketPriority, TicketStatus, WorkOrderStatus } from '@/types/database';
-
-type Summary = {
-  total_open: number;
-  new_count: number;
-  in_progress_count: number;
-  waiting_count: number;
-  awaiting_approval_count: number;
-  urgent_open_count: number;
-};
+import { TicketPriority, TicketStatus } from '@/types/database';
 
 type RecentTicket = {
   id: string;
@@ -42,12 +29,6 @@ type RecentTicket = {
   categories?: { name: string } | null;
   equipments?: { code: string; name: string } | null;
   profiles?: { full_name: string } | null;
-};
-
-type MyWorkOrderRow = {
-  id: string;
-  status: WorkOrderStatus;
-  created_at: string;
 };
 
 const WEEKDAY_NAMES = ['Pzt', 'Salı', 'Çrş', 'Prş', 'Cuma', 'Cmt', 'Pzr'];
@@ -76,12 +57,12 @@ function getCurrentWeekDays(): Date[] {
 
 export default function WorkTrackingOverviewPage() {
   const { profile, serverModules } = useDashboardAuth();
-  const [summary, setSummary] = useState<Summary | null>(null);
   const [recent, setRecent] = useState<RecentTicket[]>([]);
-  const [myOrders, setMyOrders] = useState<MyWorkOrderRow[]>([]);
   const [unassignedCount, setUnassignedCount] = useState<number>(0);
-  const [activeWoCount, setActiveWoCount] = useState<number>(0);
+  const [inFieldCount, setInFieldCount] = useState<number>(0);
+  const [awaitingApprovalCount, setAwaitingApprovalCount] = useState<number>(0);
   const [closedTotal, setClosedTotal] = useState<number>(0);
+  const [urgentOpenCount, setUrgentOpenCount] = useState<number>(0);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,62 +72,58 @@ export default function WorkTrackingOverviewPage() {
     setError(null);
     try {
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      const uid = user?.id;
 
       const [
-        sumRes,
         recRes,
         unassignedRes,
-        activeWoRes,
+        inFieldRes,
+        resolvedRes,
         closedRes,
-        myWoRes,
+        urgentRes,
       ] = await Promise.all([
-        supabase.rpc('rpc_work_tracking_summary'),
         supabase
           .from('tickets')
           .select(
             'id, ticket_number, reporter_id, description, priority, status, created_at, custom_location, custom_category, locations(name, floors(name)), categories(name), equipments(code, name), profiles!tickets_reporter_id_fkey(full_name)'
           )
           .order('created_at', { ascending: false })
-          .limit(40),
-        // 1. Kutu: Henüz iş emrine dönüştürülmemiş (Atama Bekleyen) arızalar
+          .limit(50),
+        // 1. Aşama: Atama Bekleyen (henüz iş emri atanmamış new / under_review)
         supabase
           .from('tickets')
           .select('id', { count: 'exact', head: true })
           .in('status', ['new', 'under_review']),
-        // 2. Kutu: Sahada aktif olan (Atandı / İşlemde / Beklemede) iş emirleri
+        // 2. Aşama: Sahada / İşlemde (assigned / in_progress / waiting)
         supabase
-          .from('work_orders')
+          .from('tickets')
           .select('id', { count: 'exact', head: true })
           .in('status', ['assigned', 'in_progress', 'waiting']),
-        // 4. Kutu: Onaylanıp kapatılmış kayıtlar
+        // 3. Aşama: Çözüm Onayı Bekleyen (resolved - kesinlikle Kapandı sayılmaz!)
+        supabase
+          .from('tickets')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'resolved'),
+        // 4. Aşama: Kapandı (yalnızca onaylanıp kapanmış closed kayıtlar)
         supabase
           .from('tickets')
           .select('id', { count: 'exact', head: true })
           .eq('status', 'closed'),
-        // Sol Koyu Kart ("Üzerimdeki Toplam İşler"): Doğrudan giriş yapan kullanıcıya atanmış iş emirleri
-        uid
-          ? supabase
-              .from('work_orders')
-              .select('id, status, created_at, work_order_assignments!inner(user_id)')
-              .eq('work_order_assignments.user_id', uid)
-              .neq('status', 'cancelled')
-          : Promise.resolve({ data: [], error: null }),
+        // Acil açık kayıtlar
+        supabase
+          .from('tickets')
+          .select('id', { count: 'exact', head: true })
+          .eq('priority', 'urgent')
+          .not('status', 'in', '("closed","cancelled")'),
       ]);
 
-      if (sumRes.error) throw sumRes.error;
       if (recRes.error) throw recRes.error;
 
-      const sumRow = Array.isArray(sumRes.data) ? sumRes.data[0] : sumRes.data;
-      setSummary(sumRow ?? null);
       setRecent((recRes.data as unknown as RecentTicket[]) ?? []);
       setUnassignedCount(unassignedRes.count ?? 0);
-      setActiveWoCount(activeWoRes.count ?? 0);
+      setInFieldCount(inFieldRes.count ?? 0);
+      setAwaitingApprovalCount(resolvedRes.count ?? 0);
       setClosedTotal(closedRes.count ?? 0);
-      setMyOrders((myWoRes.data as unknown as MyWorkOrderRow[]) ?? []);
+      setUrgentOpenCount(urgentRes.count ?? 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Özet verileri yüklenemedi.');
     } finally {
@@ -157,7 +134,6 @@ export default function WorkTrackingOverviewPage() {
   useEffect(() => {
     loadOverview();
 
-    // Supabase Realtime + Pencere Odaklandığında Anlık Otomatik Yenileme
     const supabase = createClient();
     const channel = supabase
       .channel('wt-overview-live')
@@ -169,11 +145,6 @@ export default function WorkTrackingOverviewPage() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'work_orders' },
-        () => loadOverview(true)
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'work_order_assignments' },
         () => loadOverview(true)
       )
       .subscribe();
@@ -191,37 +162,12 @@ export default function WorkTrackingOverviewPage() {
   const today = useMemo(() => new Date(), []);
 
   const visibleRecent = useMemo(() => {
-    if (!selectedDay) return recent.slice(0, 10);
+    if (!selectedDay) return recent.slice(0, 12);
     return recent.filter((t) => isSameLocalDay(new Date(t.created_at), selectedDay));
   }, [recent, selectedDay]);
 
-  const awaitingApprovalCount = summary?.awaiting_approval_count ?? 0;
-  const urgentOpenCount = summary?.urgent_open_count ?? 0;
-
-  // SOL KOYU KART ("Üzerimdeki Toplam İşler"):
-  // Kullanıcıya atanmış iş emri varsa onları, yoksa kendi açtığı arıza kayıtlarını sayar.
-  // Böylece sağdaki "Genel Saha Operasyon Kutuları" ile aynı sayıyı tekrar etmez!
-  const myAssignedCount = myOrders.length;
-  const myOwnReported = recent.filter((t) => t.reporter_id === profile?.id);
-  const useAssignedForHero = myAssignedCount > 0;
-
-  const heroNew = useAssignedForHero
-    ? myOrders.filter((o) => o.status === 'assigned').length
-    : myOwnReported.filter((t) => t.status === 'new' || t.status === 'under_review').length;
-
-  const heroInProgress = useAssignedForHero
-    ? myOrders.filter((o) => o.status === 'in_progress').length
-    : myOwnReported.filter((t) => t.status === 'assigned' || t.status === 'in_progress').length;
-
-  const heroWaiting = useAssignedForHero
-    ? myOrders.filter((o) => o.status === 'waiting').length
-    : myOwnReported.filter((t) => t.status === 'waiting').length;
-
-  const heroCompleted = useAssignedForHero
-    ? myOrders.filter((o) => o.status === 'completed').length
-    : myOwnReported.filter((t) => t.status === 'resolved' || t.status === 'closed').length;
-
-  const heroTotal = heroNew + heroInProgress + heroWaiting + heroCompleted;
+  const grandTotal =
+    unassignedCount + inFieldCount + awaitingApprovalCount + closedTotal;
 
   return (
     <div className="space-y-5">
@@ -233,7 +179,7 @@ export default function WorkTrackingOverviewPage() {
           </div>
           <h1 className="text-2xl font-extrabold text-navy">İş Takip – Genel Bakış</h1>
           <p className="text-sm text-slate-500">
-            Kişisel iş yükünüz, genel saha iş akışı (Atama Bekleyen → Sahada → Onay → Kapanan) ve haftalık takvim.
+            Atama Bekleyen → Sahada / İşlemde → Çözüm Onayı Bekleyen → Kapanan iş akışı özeti.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -250,7 +196,7 @@ export default function WorkTrackingOverviewPage() {
               href="/work-tracking/tickets"
               className="rounded-xl bg-navy px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-navy-hover"
             >
-              Arıza Kayıtları ({unassignedCount} Atama Bekleyen)
+              Hizmet Talepleri / Arızalar ({unassignedCount + inFieldCount + awaitingApprovalCount} Aktif)
             </Link>
           )}
           {canAccessDashboardPath(profile, '/work-tracking/work-orders', serverModules) && (
@@ -258,7 +204,7 @@ export default function WorkTrackingOverviewPage() {
               href="/work-tracking/work-orders"
               className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
             >
-              İş Emirleri ({activeWoCount} Sahada)
+              İş Emirleri ({inFieldCount} Sahada)
             </Link>
           )}
           {canAccessDashboardPath(profile, '/work-tracking/review', serverModules) && (
@@ -278,162 +224,90 @@ export default function WorkTrackingOverviewPage() {
         </div>
       )}
 
-      {/* 1. ÜST BÖLÜM: Sol Kişisel İş Yükü Kartı + Sağ 4 Aşamalı Genel Saha Operasyon Kutuları */}
-      <div className="grid gap-4 lg:grid-cols-12">
-        {/* SOL KART: Kişisel İş Yükü ("Bana Atanan / Açtığım İşler") */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0F2342] via-navy to-[#1E4474] p-6 text-white shadow-md lg:col-span-6">
-          <div className="pointer-events-none absolute -right-10 -top-10 h-44 w-44 rounded-full bg-white/5" />
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-xs font-bold uppercase tracking-wider text-cyan-300">
-                KİŞİSEL İŞ YÜKÜ ÖZETİ ({profile?.full_name ?? 'Kullanıcı'})
-              </div>
-              <h2 className="mt-1 text-lg font-extrabold text-white">
-                {useAssignedForHero
-                  ? 'Bana Atanan İş Emirleri'
-                  : 'Üzerimdeki / Açtığım Talepler'}
-              </h2>
-            </div>
-            <div className="rounded-2xl bg-white/10 px-4 py-2 text-3xl font-black tracking-tight text-white">
-              {loading ? '...' : heroTotal}
-            </div>
-          </div>
-
-          <div className="mt-6 grid grid-cols-4 gap-3 text-center">
-            <Link
-              href={useAssignedForHero ? '/work-tracking/work-orders' : '/work-tracking/tickets'}
-              className="group flex flex-col items-center rounded-xl p-2 transition hover:bg-white/10"
-            >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-base font-black text-navy shadow-sm">
-                {loading ? '·' : heroNew}
-              </div>
-              <span className="mt-2 text-xs font-semibold text-slate-200 group-hover:text-white">
-                {useAssignedForHero ? 'Yeni Atanan' : 'Yeni'}
-              </span>
-            </Link>
-
-            <Link
-              href="/work-tracking/work-orders"
-              className="group flex flex-col items-center rounded-xl p-2 transition hover:bg-white/10"
-            >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-base font-black text-amber-700 shadow-sm">
-                {loading ? '·' : heroInProgress}
-              </div>
-              <span className="mt-2 text-xs font-semibold text-slate-200 group-hover:text-white">
-                İş Devam Ediyor
-              </span>
-            </Link>
-
-            <Link
-              href="/work-tracking/work-orders"
-              className="group flex flex-col items-center rounded-xl p-2 transition hover:bg-white/10"
-            >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-base font-black text-orange-600 shadow-sm">
-                {loading ? '·' : heroWaiting}
-              </div>
-              <span className="mt-2 text-xs font-semibold text-slate-200 group-hover:text-white">
-                Beklemede
-              </span>
-            </Link>
-
-            <Link
-              href={useAssignedForHero ? '/work-tracking/work-orders' : '/work-tracking/tickets'}
-              className="group flex flex-col items-center rounded-xl p-2 transition hover:bg-white/10"
-            >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-base font-black text-emerald-700 shadow-sm">
-                {loading ? '·' : heroCompleted}
-              </div>
-              <span className="mt-2 text-xs font-semibold text-slate-200 group-hover:text-white">
-                Tamamlanan
-              </span>
-            </Link>
-          </div>
-        </div>
-
-        {/* SAĞ 2x2 BENTO KUTULARI: Tesis Genel Saha İş Akışı (4 Farklı Aşama) */}
-        <div className="grid grid-cols-2 gap-3.5 lg:col-span-6">
-          {/* Aşama 1: Atama Bekleyen Yeni Arıza */}
-          <Link
-            href="/work-tracking/tickets"
-            className="flex flex-col justify-between rounded-2xl border border-rose-300 bg-rose-50/70 p-4 transition hover:shadow-sm"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-extrabold text-slate-800">
-                1. Atama Bekleyen Arıza
+      {/* 1. TEK VE TUTARLI KOYU LACİVERT HERO KPI KARTI (4 Net Aşama) */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0F2342] via-navy to-[#1E4474] p-6 text-white shadow-md">
+        <div className="pointer-events-none absolute -right-10 -top-10 h-44 w-44 rounded-full bg-white/5" />
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-cyan-300">
+                CANLI İŞ AKIŞI ÖZETİ
               </span>
               {urgentOpenCount > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white">
+                <span className="inline-flex items-center gap-1 rounded-full bg-rose-600 px-2.5 py-0.5 text-[11px] font-bold text-white">
                   <AlertTriangle className="h-3 w-3" />
-                  {urgentOpenCount} Acil
+                  {urgentOpenCount} Acil Açık
                 </span>
               )}
             </div>
-            <div className="mt-1 text-[11px] text-slate-500">
-              Henüz iş emri atanmamış yeni kayıtlar
-            </div>
-            <div className="mt-3 flex items-end justify-between">
-              <span className="text-2xl font-black text-rose-600">
-                {loading ? '...' : unassignedCount}
-              </span>
-              <FileText className="h-6 w-6 text-rose-500" />
-            </div>
-          </Link>
+            <h2 className="mt-1 text-xl font-extrabold text-white">
+              Toplam Talepler & Saha İşleri
+            </h2>
+          </div>
+          <div className="rounded-2xl bg-white/10 px-5 py-2 text-3xl font-black tracking-tight text-white">
+            {loading ? '...' : grandTotal}
+          </div>
+        </div>
 
-          {/* Aşama 2: Sahada Aktif İş Emirleri */}
-          <Link
-            href="/work-tracking/work-orders"
-            className="flex flex-col justify-between rounded-2xl border border-blue-300 bg-blue-50/70 p-4 transition hover:shadow-sm"
-          >
-            <div className="text-sm font-extrabold text-slate-800">
-              2. Sahada Aktif İş Emirleri
-            </div>
-            <div className="mt-1 text-[11px] text-slate-500">
-              Teknisyene atanmış, işlemde veya bekleyen
-            </div>
-            <div className="mt-3 flex items-end justify-between">
-              <span className="text-2xl font-black text-blue-600">
-                {loading ? '...' : activeWoCount}
-              </span>
-              <Briefcase className="h-6 w-6 text-blue-500" />
-            </div>
-          </Link>
-
-          {/* Aşama 3: Çözüm Onay / Kontrol */}
-          <Link
-            href="/work-tracking/review"
-            className="flex flex-col justify-between rounded-2xl border border-lime-300 bg-lime-50/70 p-4 transition hover:shadow-sm"
-          >
-            <div className="text-sm font-extrabold text-slate-800">
-              3. Çözüm Onay / Kontrol
-            </div>
-            <div className="mt-1 text-[11px] text-slate-500">
-              Teknisyen tamamladı, yönetici onayı bekliyor
-            </div>
-            <div className="mt-3 flex items-end justify-between">
-              <span className="text-2xl font-black text-lime-700">
-                {loading ? '...' : awaitingApprovalCount}
-              </span>
-              <ClipboardCheck className="h-6 w-6 text-lime-600" />
-            </div>
-          </Link>
-
-          {/* Aşama 4: Kapanan / Arşivlenen */}
+        <div className="mt-6 grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
           <Link
             href="/work-tracking/tickets"
-            className="flex flex-col justify-between rounded-2xl border border-teal-300 bg-teal-50/70 p-4 transition hover:shadow-sm"
+            className="group flex flex-col items-center rounded-xl bg-white/5 p-3 transition hover:bg-white/15"
           >
-            <div className="text-sm font-extrabold text-slate-800">
-              4. Kapanan / Tamamlanan
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-base font-black text-sky-700 shadow-sm">
+              {loading ? '·' : unassignedCount}
             </div>
-            <div className="mt-1 text-[11px] text-slate-500">
-              Onaylanarak kalıcı kapatılan işler
+            <span className="mt-2 text-xs font-bold text-white">
+              1. Atama Bekleyen
+            </span>
+            <span className="text-[10.5px] text-slate-300">
+              Henüz teknisyene atanmadı
+            </span>
+          </Link>
+
+          <Link
+            href="/work-tracking/work-orders"
+            className="group flex flex-col items-center rounded-xl bg-white/5 p-3 transition hover:bg-white/15"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-base font-black text-amber-700 shadow-sm">
+              {loading ? '·' : inFieldCount}
             </div>
-            <div className="mt-3 flex items-end justify-between">
-              <span className="text-2xl font-black text-teal-600">
-                {loading ? '...' : closedTotal}
-              </span>
-              <CheckCircle2 className="h-6 w-6 text-teal-500" />
+            <span className="mt-2 text-xs font-bold text-white">
+              2. Sahada / İşlemde
+            </span>
+            <span className="text-[10.5px] text-slate-300">
+              Atandı, işlemde veya beklemede
+            </span>
+          </Link>
+
+          <Link
+            href="/work-tracking/review"
+            className="group flex flex-col items-center rounded-xl bg-white/5 p-3 transition hover:bg-white/15"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-base font-black text-emerald-700 shadow-sm">
+              {loading ? '·' : awaitingApprovalCount}
             </div>
+            <span className="mt-2 text-xs font-bold text-white">
+              3. Onay Bekleyen
+            </span>
+            <span className="text-[10.5px] text-slate-300">
+              Teknisyen tamamladı, onayda
+            </span>
+          </Link>
+
+          <Link
+            href="/work-tracking/tickets"
+            className="group flex flex-col items-center rounded-xl bg-white/5 p-3 transition hover:bg-white/15"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-base font-black text-navy shadow-sm">
+              {loading ? '·' : closedTotal}
+            </div>
+            <span className="mt-2 text-xs font-bold text-white">
+              4. Kapandı
+            </span>
+            <span className="text-[10.5px] text-slate-300">
+              Onaylanarak kapatıldı
+            </span>
           </Link>
         </div>
       </div>
@@ -490,7 +364,10 @@ export default function WorkTrackingOverviewPage() {
           </div>
           <div className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-1.5">
             <Layers className="h-3.5 w-3.5 text-navy" />
-            Bana Atanan İş Emri: <span className="text-navy">{myAssignedCount}</span>
+            Aktif Süreçteki İşler:{' '}
+            <span className="text-navy">
+              {unassignedCount + inFieldCount + awaitingApprovalCount}
+            </span>
           </div>
         </div>
       </div>

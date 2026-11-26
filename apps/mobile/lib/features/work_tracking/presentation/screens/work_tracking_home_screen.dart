@@ -13,16 +13,12 @@ import 'package:avm_tech_platform/features/work_tracking/data/models/ticket_mode
 import 'package:avm_tech_platform/features/work_tracking/providers/data_providers.dart';
 import 'package:avm_tech_platform/features/work_tracking/work_tracking_access.dart';
 
-/// İş Takip Ana Ekranı:
-/// 1) Koyu Lacivert Hero Kartı: Yalnızca kullanıcının KENDİ üzerindeki iş yükünü
-///    (Teknisyen/Yönetici için Bana Atanan İş Emirleri, Personel için Açtığım Talepler) gösterir.
-/// 2) Haftalık Yatay Takvim Şeridi.
-/// 3) 2x2 Bento Operasyon Izgarası: Tekrarsız 4 ayrı süreç adımı:
-///    - Atama Bekleyen Arıza (henüz iş emri atanmamış new/under_review)
-///    - Sahada İş Emirleri (atanmış / işlemde / beklemede iş emirleri)
-///    - Çözüm Onay Bekleyen (teknisyenin tamamladığı resolved kayıtlar)
-///    - Kapanan İşler (onaylanıp kapatılmış kayıtlar)
-/// 4) Supabase Realtime aboneliği ile ekranı kapatıp açmadan anlık otomatik yenileme.
+/// İş Takip Ana Ekranı (Tek Gerçek Kaynaklı, Tekrarsız ve Tutarlı Durum Mimarisi):
+/// - Koyu Lacivert Hero Kartı: 4 net aşama (Atama Bekleyen | Sahada / İşlemde | Onay Bekleyen | Kapandı)
+///   * Onay Bekleyen (`resolved`) kesinlikle "Kapandı" içinde sayılmaz!
+///   * Kapandı (`closed`) yalnızca onaylanıp kapanmış kayıtları sayar.
+/// - Haftalık Yatay Takvim Şeridi.
+/// - Tekrarlayan 2x2 kutular kaldırıldı; alt menü kartları gerçek toplam sayıları gösterir.
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -110,19 +106,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final profile = ref.watch(authProvider).profile;
-    final uid = profile?.id;
     final unread = ref
         .watch(unreadCountProvider)
         .maybeWhen(data: (n) => n, orElse: () => 0);
 
     final ticketsAsync = ref.watch(ticketsProvider);
     final myOrdersAsync = ref.watch(myWorkOrdersProvider);
-    final activeManagerOrdersAsync = ref.watch(activeManagerWorkOrdersProvider);
 
     final allTickets = ticketsAsync.valueOrNull ?? const <TicketModel>[];
     final myOrders = myOrdersAsync.valueOrNull ?? const <WorkOrderView>[];
-    final activeManagerOrders =
-        activeManagerOrdersAsync.valueOrNull ?? const <WorkOrderView>[];
 
     final canCreateTicket = profile?.hasActionAccess('ticket_create') ?? false;
     final canViewTickets = profile?.hasMenuAccess('tickets') ?? false;
@@ -136,90 +128,46 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final canViewNotifications =
         profile?.hasMenuAccess('notifications') ?? true;
 
-    final dayFilteredTickets = _selectedDay == null
+    // Seçili güne göre filtrelenmiş arıza/talep listesi (RLS gereği personel kendi açtığını, yönetici tümünü görür)
+    final scopedTickets = _selectedDay == null
         ? allTickets
         : allTickets
             .where((t) => _isSameDay(t.createdAt.toLocal(), _selectedDay!))
             .toList();
 
-    final dayFilteredMyOrders = _selectedDay == null
-        ? myOrders
-        : myOrders
-            .where(
-                (w) => _isSameDay(w.order.createdAt.toLocal(), _selectedDay!))
-            .toList();
-
-    // 1) ÜST KOYU KART ("Üzerimdeki Toplam İşler"):
-    // Teknisyen / Ekip Sorumlusu ise doğrudan KENDİSİNE ATANAN iş emirlerinin kırılımı;
-    // AVM Personeli veya Yönetici ise kendi açtığı / takip ettiği kayıtların kırılımı.
-    final bool usePersonalOrdersForHero =
-        canExecuteWorkOrders && myOrders.isNotEmpty;
-
-    final int heroNewCount;
-    final int heroInProgressCount;
-    final int heroWaitingCount;
-    final int heroCompletedCount;
-    final int heroTotalCount;
-
-    if (usePersonalOrdersForHero) {
-      heroNewCount = dayFilteredMyOrders
-          .where((w) => w.order.status == 'assigned')
-          .length;
-      heroInProgressCount = dayFilteredMyOrders
-          .where((w) => w.order.status == 'in_progress')
-          .length;
-      heroWaitingCount = dayFilteredMyOrders
-          .where((w) => w.order.status == 'waiting')
-          .length;
-      heroCompletedCount = dayFilteredMyOrders
-          .where((w) => w.order.status == 'completed')
-          .length;
-      heroTotalCount = dayFilteredMyOrders.length;
-    } else {
-      final personalTickets = (profile?.isManagement ?? false)
-          ? dayFilteredTickets
-          : dayFilteredTickets.where((t) => t.reporterId == uid).toList();
-      heroNewCount = personalTickets
-          .where((t) => t.status == 'new' || t.status == 'under_review')
-          .length;
-      heroInProgressCount = personalTickets
-          .where((t) => t.status == 'assigned' || t.status == 'in_progress')
-          .length;
-      heroWaitingCount =
-          personalTickets.where((t) => t.status == 'waiting').length;
-      heroCompletedCount = personalTickets
-          .where((t) => t.status == 'resolved' || t.status == 'closed')
-          .length;
-      heroTotalCount = personalTickets.length;
-    }
-
-    // 2) 2x2 BENTO OPERASYON KUTULARI (Tekrarsız 4 Ayrı Süreç Aşaması):
-    // Kutu 1: Atama Bekleyen Arıza (Henüz iş emrine dönüşmemiş: new / under_review)
-    final unassignedTicketsCount = dayFilteredTickets
+    // 4 Net ve Birbiriyle Çakışmayan Süreç Aşaması:
+    // 1. Atama Bekleyen: Henüz iş emrine dönüşmemiş (new, under_review)
+    final unassignedCount = scopedTickets
         .where((t) => t.status == 'new' || t.status == 'under_review')
         .length;
 
-    // Kutu 2: Sahada Aktif İş Emirleri (İş emri atanmış, işlemde veya beklemede)
-    final fieldActiveWorkOrdersCount = (profile?.isManagement ?? false)
-        ? (activeManagerOrders.isNotEmpty
-            ? activeManagerOrders.length
-            : dayFilteredTickets
-                .where((t) =>
-                    t.status == 'assigned' ||
-                    t.status == 'in_progress' ||
-                    t.status == 'waiting')
-                .length)
-        : dayFilteredMyOrders
-            .where((w) => w.order.status != 'completed')
-            .length;
+    // 2. Sahada / İşlemde: Teknisyene atanmış, üzerinde çalışılan veya parça bekleyen (assigned, in_progress, waiting)
+    final inFieldCount = scopedTickets
+        .where((t) =>
+            t.status == 'assigned' ||
+            t.status == 'in_progress' ||
+            t.status == 'waiting')
+        .length;
 
-    // Kutu 3: Çözüm Onay Bekleyen (Teknisyen bitirmiş, yönetici/bildiren onayı bekliyor)
-    final pendingApprovalCount =
-        dayFilteredTickets.where((t) => t.status == 'resolved').length;
+    // 3. Onay Bekleyen: Teknisyen işi bitirmiş, bildirenin veya yöneticinin onayını bekliyor (resolved)
+    final awaitingApprovalCount =
+        scopedTickets.where((t) => t.status == 'resolved').length;
 
-    // Kutu 4: Tamamlanan / Kapanan (Kalıcı olarak kapatılmış)
-    final closedTicketsCount =
-        dayFilteredTickets.where((t) => t.status == 'closed').length;
+    // 4. Kapandı: Onaylanıp tamamen kapatılmış kayıtlar (closed)
+    final closedCount =
+        scopedTickets.where((t) => t.status == 'closed').length;
+
+    // Toplam (4 aşamanın birebir toplamı)
+    final totalCount =
+        unassignedCount + inFieldCount + awaitingApprovalCount + closedCount;
+
+    // Aktif açık kayıt sayısı (Atama Bekleyen + Sahada + Onay Bekleyen)
+    final activeTicketsCount =
+        unassignedCount + inFieldCount + awaitingApprovalCount;
+
+    // Teknisyenin kendisine atanmış aktif iş emri sayısı
+    final myActiveWorkOrdersCount =
+        myOrders.where((w) => w.order.status != 'completed').length;
 
     final now = DateTime.now();
     final weekDays = _currentWeekDays(now);
@@ -236,7 +184,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
             children: [
-              // 1) KOYU LACİVERT HERO KPI KARTI ("Üzerimdeki Toplam İşler")
+              // 1) KOYU LACİVERT HERO KPI KARTI (4 Tutarlı Aşama: Atama Bekleyen | Sahada | Onay Bekleyen | Kapandı)
               Container(
                 padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
                 decoration: BoxDecoration(
@@ -264,11 +212,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                usePersonalOrdersForHero
-                                    ? 'Üzerimdeki Toplam İşler'
-                                    : ((profile?.isManagement ?? false)
-                                        ? 'Toplam Saha İşleri Özeti'
-                                        : 'Açtığım Toplam Talepler'),
+                                (profile?.isManagement ?? false)
+                                    ? 'Toplam Saha İşleri & Talepler'
+                                    : 'Açtığım Toplam Talepler',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
@@ -306,7 +252,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             borderRadius: BorderRadius.circular(14),
                           ),
                           child: Text(
-                            '$heroTotalCount',
+                            '$totalCount',
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 24,
@@ -322,45 +268,44 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
                         _HeroCircleMetric(
-                          count: heroNewCount,
-                          label: usePersonalOrdersForHero ? 'Yeni Atanan' : 'Atama Bekleyen',
-                          onTap: usePersonalOrdersForHero
-                              ? () => context.push('/work-tracking/work-orders')
-                              : (canViewTickets
-                                  ? () => context
-                                      .push('/work-tracking/tickets?tab=unassigned')
-                                  : null),
+                          count: unassignedCount,
+                          label: 'Atama Bekleyen',
+                          countColor: AppColors.statusNew,
+                          onTap: canViewTickets
+                              ? () => context.push(
+                                    '/work-tracking/tickets?tab=active&status=new',
+                                  )
+                              : null,
                         ),
                         _HeroCircleMetric(
-                          count: heroInProgressCount,
-                          label: 'İş Devam Ediyor',
-                          onTap: usePersonalOrdersForHero
-                              ? () => context.push('/work-tracking/work-orders')
-                              : (canViewTickets
-                                  ? () => context
-                                      .push('/work-tracking/tickets?tab=in_field')
-                                  : null),
+                          count: inFieldCount,
+                          label: 'Sahada / İşlemde',
+                          countColor: AppColors.priorityHigh,
+                          onTap: canViewTickets
+                              ? () => context.push(
+                                    '/work-tracking/tickets?tab=active',
+                                  )
+                              : null,
                         ),
                         _HeroCircleMetric(
-                          count: heroWaitingCount,
-                          label: 'Beklemede',
-                          onTap: usePersonalOrdersForHero
-                              ? () => context.push('/work-tracking/work-orders')
-                              : (canViewTickets
-                                  ? () => context.push(
-                                        '/work-tracking/tickets?status=waiting',
-                                      )
-                                  : null),
+                          count: awaitingApprovalCount,
+                          label: 'Onay Bekleyen',
+                          countColor: AppColors.statusResolved,
+                          onTap: canViewTickets
+                              ? () => context.push(
+                                    '/work-tracking/tickets?tab=active&status=resolved',
+                                  )
+                              : null,
                         ),
                         _HeroCircleMetric(
-                          count: heroCompletedCount,
+                          count: closedCount,
                           label: 'Kapandı',
-                          onTap: usePersonalOrdersForHero
-                              ? () => context.push('/work-tracking/work-orders')
-                              : (canViewTickets
-                                  ? () => context
-                                      .push('/work-tracking/tickets?tab=closed')
-                                  : null),
+                          countColor: AppColors.primaryNavy,
+                          onTap: canViewTickets
+                              ? () => context.push(
+                                    '/work-tracking/tickets?tab=closed',
+                                  )
+                              : null,
                         ),
                       ],
                     ),
@@ -396,93 +341,59 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ],
                 ],
               ),
-              const SizedBox(height: 8),
-
-              // 3) 2x2 BENTO OPERASYON KUTULARI (Tekrarsız 4 Farklı Süreç Aşaması)
-              Row(
-                children: [
-                  Expanded(
-                    child: _BentoSummaryCard(
-                      title: 'Atama Bekleyen Arıza',
-                      count: unassignedTicketsCount,
-                      icon: Icons.notification_important_outlined,
-                      borderColor: const Color(0xFFF87171),
-                      bgColor: const Color(0xFFFEF2F2),
-                      accentColor: const Color(0xFFDC2626),
-                      onTap: canManageWorkOrders
-                          ? () => context
-                              .push('/work-tracking/manager-work-orders')
-                          : (canViewTickets
-                              ? () => context.push(
-                                    '/work-tracking/tickets?tab=unassigned',
-                                  )
-                              : null),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _BentoSummaryCard(
-                      title: 'Sahada İş Emirleri',
-                      count: fieldActiveWorkOrdersCount,
-                      icon: Icons.engineering_outlined,
-                      borderColor: const Color(0xFF60A5FA),
-                      bgColor: const Color(0xFFEFF6FF),
-                      accentColor: const Color(0xFF2563EB),
-                      onTap: canExecuteWorkOrders
-                          ? () => context.push('/work-tracking/work-orders')
-                          : (canManageWorkOrders
-                              ? () => context
-                                  .push('/work-tracking/manager-work-orders')
-                              : (canViewTickets
-                                  ? () => context.push(
-                                        '/work-tracking/tickets?tab=in_field',
-                                      )
-                                  : null)),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: _BentoSummaryCard(
-                      title: 'Çözüm Onay Bekleyen',
-                      count: pendingApprovalCount,
-                      icon: Icons.fact_check_outlined,
-                      borderColor: const Color(0xFF2DD4BF),
-                      bgColor: const Color(0xFFF0FDFA),
-                      accentColor: const Color(0xFF0D9488),
-                      onTap: canManageWorkOrders
-                          ? () => context
-                              .push('/work-tracking/manager-work-orders')
-                          : (canViewTickets
-                              ? () => context.push(
-                                    '/work-tracking/tickets?status=resolved',
-                                  )
-                              : null),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _BentoSummaryCard(
-                      title: 'Kapanan İşler',
-                      count: closedTicketsCount,
-                      icon: Icons.task_alt_rounded,
-                      borderColor: const Color(0xFFA3E635),
-                      bgColor: const Color(0xFFF7FEE7),
-                      accentColor: const Color(0xFF4D7C0F),
-                      onTap: canViewTickets
-                          ? () =>
-                              context.push('/work-tracking/tickets?tab=closed')
-                          : null,
-                    ),
-                  ),
-                ],
-              ),
               const SizedBox(height: 10),
 
-              // 4) HIZLI İŞLEM MENÜSÜ
+              // 3) ONAY BEKLEYEN İŞ UYARI KARTI (Varsa kullanıcıyı doğrudan onaya yönlendirir)
+              if (awaitingApprovalCount > 0 && canViewTickets)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () => context.push(
+                      '/work-tracking/tickets?tab=active&status=resolved',
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF0FDF4),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: const Color(0xFF4ADE80),
+                          width: 1.2,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.fact_check_rounded,
+                            color: AppColors.statusResolved,
+                            size: 22,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Çözüm onayınızı bekleyen $awaitingApprovalCount adet tamamlanmış iş isteği var. İnceleyip kapatmak için dokunun.',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                          const Icon(
+                            Icons.chevron_right_rounded,
+                            color: AppColors.statusResolved,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+              // 4) İŞLEM MENÜSÜ (Tutarlı Gerçek Sayaçlarla)
               if (canCreateTicket)
                 _HomeTile(
                   icon: Icons.add_circle_rounded,
@@ -499,11 +410,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   iconColor: AppColors.priorityHigh,
                   iconBg: AppColors.electricSoft,
                   title: (profile?.isManagement ?? false)
-                      ? 'Arıza Kayıtları (Atama Bekleyen)'
+                      ? 'Tüm Arıza Kayıtları'
                       : 'Arızalarım',
-                  subtitle: 'Atama bekleyen, sahada olan ve kapanan kayıtlar',
-                  trailingCount: unassignedTicketsCount,
-                  onTap: () => context.push('/work-tracking/tickets'),
+                  subtitle: activeTicketsCount > 0
+                      ? '$activeTicketsCount aktif ($inFieldCount sahada, $awaitingApprovalCount onayda) · $closedCount kapanan'
+                      : 'Toplam $totalCount kayıt ($closedCount kapanan)',
+                  trailingCount: totalCount,
+                  onTap: () => context.push(
+                    activeTicketsCount > 0
+                        ? '/work-tracking/tickets?tab=active'
+                        : '/work-tracking/tickets?tab=closed',
+                  ),
                 ),
               if (canManageWorkOrders)
                 _HomeTile(
@@ -511,8 +428,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   iconColor: AppColors.primaryNavy,
                   iconBg: AppColors.primarySoft,
                   title: 'İş Emirleri Yönetimi (Ata & Onayla)',
-                  subtitle: 'Yeni arızaları teknisyene atayın ve çözümleri onaylayın',
-                  trailingCount: unassignedTicketsCount + pendingApprovalCount,
+                  subtitle:
+                      '$unassignedCount atama bekleyen · $inFieldCount sahada · $awaitingApprovalCount onay bekleyen',
+                  trailingCount: unassignedCount + awaitingApprovalCount,
                   onTap: () =>
                       context.push('/work-tracking/manager-work-orders'),
                 ),
@@ -523,9 +441,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   iconBg: AppColors.turquoiseSoft,
                   title: 'Bana Atanan İş Emirleri',
                   subtitle: 'İşe başlayın, malzeme girin ve fotoğrafla tamamlayın',
-                  trailingCount: dayFilteredMyOrders
-                      .where((w) => w.order.status != 'completed')
-                      .length,
+                  trailingCount: myActiveWorkOrdersCount,
                   onTap: () => context.push('/work-tracking/work-orders'),
                 ),
               if (canViewNotifications)
@@ -559,11 +475,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 class _HeroCircleMetric extends StatelessWidget {
   final int count;
   final String label;
+  final Color countColor;
   final VoidCallback? onTap;
 
   const _HeroCircleMetric({
     required this.count,
     required this.label,
+    this.countColor = AppColors.primaryNavy,
     this.onTap,
   });
 
@@ -592,8 +510,8 @@ class _HeroCircleMetric extends StatelessWidget {
                     padding: const EdgeInsets.all(4),
                     child: Text(
                       '$count',
-                      style: const TextStyle(
-                        color: AppColors.primaryNavy,
+                      style: TextStyle(
+                        color: countColor,
                         fontSize: 13.5,
                         fontWeight: FontWeight.w900,
                       ),
@@ -609,7 +527,7 @@ class _HeroCircleMetric extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Colors.white70,
-                  fontSize: 10.5,
+                  fontSize: 10,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -673,72 +591,6 @@ class _WeekDayPill extends StatelessWidget {
                 fontWeight: FontWeight.w600,
                 color: isSelected ? Colors.white70 : AppColors.textSecondary,
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _BentoSummaryCard extends StatelessWidget {
-  final String title;
-  final int count;
-  final IconData icon;
-  final Color borderColor;
-  final Color bgColor;
-  final Color accentColor;
-  final VoidCallback? onTap;
-
-  const _BentoSummaryCard({
-    required this.title,
-    required this.count,
-    required this.icon,
-    required this.borderColor,
-    required this.bgColor,
-    required this.accentColor,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: borderColor, width: 1.2),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '$count',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    color: accentColor,
-                  ),
-                ),
-                Icon(icon, color: accentColor, size: 22),
-              ],
             ),
           ],
         ),

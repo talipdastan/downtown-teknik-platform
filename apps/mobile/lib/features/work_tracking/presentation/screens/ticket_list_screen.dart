@@ -43,8 +43,9 @@ class _TicketListScreenState extends ConsumerState<TicketListScreen> {
   String? _status;
   String? _priority;
   String _query = '';
-  // 'unassigned' (Atama Bekleyen: new/under_review) | 'in_field' (İş Emrinde: assigned/in_progress/waiting/resolved) | 'closed' (Kapanan: closed/cancelled)
-  String _tabMode = 'unassigned';
+  // 'active' = Tüm Aktif İşler (Atama Bekleyen + Sahada İşlemde + Çözüm Onayı Bekleyen)
+  // 'closed' = Yalnızca Onaylanıp Kapananlar (closed / cancelled)
+  bool _showActiveTab = true;
 
   @override
   void initState() {
@@ -53,27 +54,11 @@ class _TicketListScreenState extends ConsumerState<TicketListScreen> {
     if (widget.initialTab == 'closed' ||
         widget.initialStatus == 'closed' ||
         widget.initialStatus == 'cancelled') {
-      _tabMode = 'closed';
-    } else if (widget.initialTab == 'in_field' ||
-        widget.initialTab == 'active' ||
-        widget.initialStatus == 'assigned' ||
-        widget.initialStatus == 'in_progress' ||
-        widget.initialStatus == 'waiting' ||
-        widget.initialStatus == 'resolved') {
-      _tabMode = 'in_field';
+      _showActiveTab = false;
     } else {
-      _tabMode = 'unassigned';
+      _showActiveTab = true;
     }
   }
-
-  bool _isUnassignedTicket(TicketModel t) =>
-      t.status == 'new' || t.status == 'under_review';
-
-  bool _isInFieldTicket(TicketModel t) =>
-      t.status == 'assigned' ||
-      t.status == 'in_progress' ||
-      t.status == 'waiting' ||
-      t.status == 'resolved';
 
   bool _isClosedTicket(TicketModel t) =>
       t.status == 'closed' || t.status == 'cancelled';
@@ -141,8 +126,7 @@ class _TicketListScreenState extends ConsumerState<TicketListScreen> {
               ),
             ),
 
-            // 2) 3 Aşamalı Sekme Geçişi: Atama Bekleyen / İş Emrinde / Kapanan
-            // İş atandığı anda "Atama Bekleyen" sekmesinden düşer ve "İş Emrinde" sekmesine geçer.
+            // 2) Senyonet Tarzı İkili Sekme: Aktif (Atama Bekleyen + Sahada + Onay Bekleyen) / Kapanan
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
               child: Container(
@@ -156,31 +140,27 @@ class _TicketListScreenState extends ConsumerState<TicketListScreen> {
                   children: [
                     Expanded(
                       child: _SegmentPill(
-                        label: 'Atama Bekleyen',
-                        selected: _tabMode == 'unassigned',
+                        label: 'Aktif (Devam Eden & Onayda)',
+                        selected: _showActiveTab,
                         onTap: () => setState(() {
-                          _tabMode = 'unassigned';
-                          _status = null;
-                        }),
-                      ),
-                    ),
-                    Expanded(
-                      child: _SegmentPill(
-                        label: 'İş Emrinde',
-                        selected: _tabMode == 'in_field',
-                        onTap: () => setState(() {
-                          _tabMode = 'in_field';
-                          _status = null;
+                          _showActiveTab = true;
+                          if (_status == 'closed' || _status == 'cancelled') {
+                            _status = null;
+                          }
                         }),
                       ),
                     ),
                     Expanded(
                       child: _SegmentPill(
                         label: 'Kapanan',
-                        selected: _tabMode == 'closed',
+                        selected: !_showActiveTab,
                         onTap: () => setState(() {
-                          _tabMode = 'closed';
-                          _status = null;
+                          _showActiveTab = false;
+                          if (_status != null &&
+                              _status != 'closed' &&
+                              _status != 'cancelled') {
+                            _status = null;
+                          }
                         }),
                       ),
                     ),
@@ -221,11 +201,9 @@ class _TicketListScreenState extends ConsumerState<TicketListScreen> {
                       onChanged: (v) => setState(() {
                         _status = v;
                         if (v == 'closed' || v == 'cancelled') {
-                          _tabMode = 'closed';
-                        } else if (v == 'new' || v == 'under_review') {
-                          _tabMode = 'unassigned';
+                          _showActiveTab = false;
                         } else if (v != null) {
-                          _tabMode = 'in_field';
+                          _showActiveTab = true;
                         }
                       }),
                     ),
@@ -270,15 +248,11 @@ class _TicketListScreenState extends ConsumerState<TicketListScreen> {
                 data: (tickets) {
                   final tabScoped = _status != null
                       ? tickets
-                      : tickets.where((t) {
-                          if (_tabMode == 'unassigned') {
-                            return _isUnassignedTicket(t);
-                          }
-                          if (_tabMode == 'in_field') {
-                            return _isInFieldTicket(t);
-                          }
-                          return _isClosedTicket(t);
-                        }).toList();
+                      : tickets
+                          .where((t) => _showActiveTab
+                              ? !_isClosedTicket(t)
+                              : _isClosedTicket(t))
+                          .toList();
                   final filtered = TicketFilter.apply(
                     tabScoped,
                     status: _status,

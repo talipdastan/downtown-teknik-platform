@@ -56,11 +56,11 @@ class AppUpdateService {
 
   static const String currentVersion = String.fromEnvironment(
     'APP_VERSION',
-    defaultValue: '1.2.2',
+    defaultValue: '1.2.3',
   );
   static const int currentBuildNumber = int.fromEnvironment(
     'APP_BUILD_NUMBER',
-    defaultValue: 5,
+    defaultValue: 6,
   );
 
   /// 1) Bulut Güncelleme Kanalı (4.5G / Mobil Veri / Her Yerden Erişilebilir)

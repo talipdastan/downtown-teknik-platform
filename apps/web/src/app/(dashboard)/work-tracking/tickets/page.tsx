@@ -145,11 +145,9 @@ export default function WorkTrackingTicketsPage() {
   const [rows, setRows] = useState<TicketRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
-  // 'unassigned' = Atama Bekleyen (new, under_review) -> İş atandığı anda bu listeden düşer!
-  // 'in_field'   = İş Emrinde / Sahada (assigned, in_progress, waiting, resolved)
-  // 'closed'     = Kapanan (closed, cancelled)
-  // 'all'        = Tümü
-  const [tabMode, setTabMode] = useState<'unassigned' | 'in_field' | 'closed' | 'all'>('unassigned');
+  // Varsayılan 'active' = Atama Bekleyen + Sahada İşlemde + Çözüm Onayı Bekleyenlerin tamamı.
+  // Böylece iş teknisyene atandığında veya onay beklediğinde bildiren kişinin listesinden kaybolmaz!
+  const [tabMode, setTabMode] = useState<'active' | 'unassigned' | 'in_field' | 'closed' | 'all'>('active');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [statusFilter, setStatusFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
@@ -650,6 +648,7 @@ export default function WorkTrackingTicketsPage() {
       r.status === 'resolved';
     const isClosed = r.status === 'closed' || r.status === 'cancelled';
     if (!statusFilter) {
+      if (tabMode === 'active' && isClosed) return false;
       if (tabMode === 'unassigned' && !isUnassigned) return false;
       if (tabMode === 'in_field' && !isInField) return false;
       if (tabMode === 'closed' && !isClosed) return false;
@@ -805,8 +804,22 @@ export default function WorkTrackingTicketsPage() {
 
       <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-3.5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          {/* Atama Bekleyen / İş Emrinde (Sahada) / Kapanan / Tümü Sekme Geçişi */}
+          {/* Aktif (Tümü) / Atama Bekleyen / Sahada & Onayda / Kapanan Sekme Geçişi */}
           <div className="inline-flex flex-wrap rounded-xl border border-slate-200 bg-canvas p-1">
+            <button
+              type="button"
+              onClick={() => {
+                setTabMode('active');
+                setStatusFilter('');
+              }}
+              className={`rounded-lg px-3.5 py-1.5 text-xs font-extrabold transition ${
+                tabMode === 'active'
+                  ? 'bg-navy text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Aktif ({rows.filter((r) => r.status !== 'closed' && r.status !== 'cancelled').length})
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -833,7 +846,7 @@ export default function WorkTrackingTicketsPage() {
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              İş Emrinde / Sahada ({rows.filter((r) => ['assigned', 'in_progress', 'waiting', 'resolved'].includes(r.status)).length})
+              Sahada & Onayda ({rows.filter((r) => ['assigned', 'in_progress', 'waiting', 'resolved'].includes(r.status)).length})
             </button>
             <button
               type="button"
@@ -848,20 +861,6 @@ export default function WorkTrackingTicketsPage() {
               }`}
             >
               Kapanan ({rows.filter((r) => r.status === 'closed' || r.status === 'cancelled').length})
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setTabMode('all');
-                setStatusFilter('');
-              }}
-              className={`rounded-lg px-3.5 py-1.5 text-xs font-extrabold transition ${
-                tabMode === 'all'
-                  ? 'bg-navy text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Tümü ({rows.length})
             </button>
           </div>
 
