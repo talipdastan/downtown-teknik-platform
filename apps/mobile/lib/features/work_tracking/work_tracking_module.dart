@@ -66,7 +66,10 @@ class WorkTrackingModule extends AppModule {
           routes: [
             GoRoute(
               path: 'tickets',
-              builder: (context, state) => const TicketListScreen(),
+              builder: (context, state) => TicketListScreen(
+                initialStatus: state.uri.queryParameters['status'],
+                initialTab: state.uri.queryParameters['tab'],
+              ),
               routes: [
                 GoRoute(
                   path: 'new',

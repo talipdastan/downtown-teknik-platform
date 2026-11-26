@@ -89,13 +89,14 @@ class _WorkOrderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final o = view.order;
+    final category = view.categoryName ?? 'Teknik İş Emri';
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 10),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         onTap: () => context.push('/work-tracking/work-orders/${o.id}'),
         child: Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(13),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -104,47 +105,119 @@ class _WorkOrderCard extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      o.ticketNumber ?? '-',
+                      'Teknik / $category',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          fontWeight: FontWeight.bold, color: AppColors.primaryNavy),
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Flexible(
-                    child: StatusChip(
-                      label: Labels.workOrderStatus(o.status),
-                      color: workOrderStatusColor(o.status),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(view.ticketDescription ?? '-', maxLines: 2, overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  if (view.ticketPriority != null) ...[
+                  if (view.ticketPriority != null)
                     StatusChip(
                       label: Labels.priority(view.ticketPriority!),
                       color: priorityColor(view.ticketPriority!),
                     ),
-                    const SizedBox(width: 8),
-                  ],
-                  Expanded(
-                    child: Text(
-                      view.locationLabel ?? '',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    o.departmentName ?? 'Teknik Ekip',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primaryNavy,
+                    ),
+                  ),
+                  Text(
+                    '#${o.ticketNumber ?? '-'}',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 ],
               ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Divider(height: 1, color: AppColors.border),
+              ),
+              _WoInfoLine(label: 'Lokasyon', value: view.locationLabel ?? '-'),
+              _WoInfoLine(
+                label: 'Durum',
+                value: Labels.workOrderStatus(o.status),
+                valueColor: workOrderStatusColor(o.status),
+                bold: true,
+              ),
+              _WoInfoLine(
+                label: 'Açıklama',
+                value: view.ticketDescription ?? '-',
+                maxLines: 2,
+              ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _WoInfoLine extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color? valueColor;
+  final bool bold;
+  final int maxLines;
+
+  const _WoInfoLine({
+    required this.label,
+    required this.value,
+    this.valueColor,
+    this.bold = false,
+    this.maxLines = 1,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 86,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 11.5,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          const Text(
+            ': ',
+            style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              maxLines: maxLines,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
+                color: valueColor ?? AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

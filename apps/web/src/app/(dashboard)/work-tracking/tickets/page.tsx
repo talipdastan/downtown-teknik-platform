@@ -121,6 +121,8 @@ export default function WorkTrackingTicketsPage() {
   const [rows, setRows] = useState<TicketRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
+  const [tabMode, setTabMode] = useState<'all' | 'active' | 'closed'>('active');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [statusFilter, setStatusFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -592,6 +594,11 @@ export default function WorkTrackingTicketsPage() {
   }
 
   const filtered = rows.filter((r) => {
+    const isClosed = r.status === 'closed' || r.status === 'cancelled';
+    if (!statusFilter) {
+      if (tabMode === 'active' && isClosed) return false;
+      if (tabMode === 'closed' && !isClosed) return false;
+    }
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return (
@@ -741,49 +748,296 @@ export default function WorkTrackingTicketsPage() {
         </div>
       )}
 
-      <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 sm:grid-cols-3">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Kayıt no, açıklama, konum veya ekipman ara..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-xl border border-slate-200 bg-canvas py-2 pl-9 pr-3 text-sm focus:border-navy focus:outline-none"
-          />
+      <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-3.5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Aktif / Kapanan / Tümü İkili-Üçlü Sekme Geçişi */}
+          <div className="inline-flex rounded-xl border border-slate-200 bg-canvas p-1">
+            <button
+              type="button"
+              onClick={() => {
+                setTabMode('active');
+                if (statusFilter === 'closed' || statusFilter === 'cancelled') {
+                  setStatusFilter('');
+                }
+              }}
+              className={`rounded-lg px-4 py-1.5 text-xs font-extrabold transition ${
+                tabMode === 'active'
+                  ? 'bg-navy text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Aktif
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setTabMode('closed');
+                if (
+                  statusFilter &&
+                  statusFilter !== 'closed' &&
+                  statusFilter !== 'cancelled'
+                ) {
+                  setStatusFilter('');
+                }
+              }}
+              className={`rounded-lg px-4 py-1.5 text-xs font-extrabold transition ${
+                tabMode === 'closed'
+                  ? 'bg-navy text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Kapanan
+            </button>
+            <button
+              type="button"
+              onClick={() => setTabMode('all')}
+              className={`rounded-lg px-4 py-1.5 text-xs font-extrabold transition ${
+                tabMode === 'all'
+                  ? 'bg-navy text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Tümü
+            </button>
+          </div>
+
+          {/* Kart Görünümü / Tablo Görünümü Seçici */}
+          <div className="inline-flex rounded-xl border border-slate-200 bg-canvas p-1">
+            <button
+              type="button"
+              onClick={() => setViewMode('cards')}
+              className={`rounded-lg px-3 py-1.5 text-xs font-extrabold transition ${
+                viewMode === 'cards'
+                  ? 'bg-turquoise text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Kart Görünümü
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('table')}
+              className={`rounded-lg px-3 py-1.5 text-xs font-extrabold transition ${
+                viewMode === 'table'
+                  ? 'bg-turquoise text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Tablo Görünümü
+            </button>
+          </div>
         </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => {
-            setPage(0);
-            setStatusFilter(e.target.value);
-          }}
-          className="rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm font-medium text-slate-800 focus:border-navy focus:outline-none"
-        >
-          <option value="">Tüm Durumlar</option>
-          {Object.entries(TICKET_STATUS_LABELS).map(([k, v]) => (
-            <option key={k} value={k}>
-              {v}
-            </option>
-          ))}
-        </select>
-        <select
-          value={priorityFilter}
-          onChange={(e) => {
-            setPage(0);
-            setPriorityFilter(e.target.value);
-          }}
-          className="rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm font-medium text-slate-800 focus:border-navy focus:outline-none"
-        >
-          <option value="">Tüm Öncelikler</option>
-          {Object.entries(PRIORITY_LABELS).map(([k, v]) => (
-            <option key={k} value={k}>
-              {v}
-            </option>
-          ))}
-        </select>
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Kayıt no, açıklama, konum veya ekipman ara..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-canvas py-2 pl-9 pr-3 text-sm focus:border-navy focus:outline-none"
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setPage(0);
+              const val = e.target.value;
+              setStatusFilter(val);
+              if (val === 'closed' || val === 'cancelled') setTabMode('closed');
+              else if (val) setTabMode('active');
+            }}
+            className="rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm font-medium text-slate-800 focus:border-navy focus:outline-none"
+          >
+            <option value="">Tüm Durumlar</option>
+            {Object.entries(TICKET_STATUS_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v}
+              </option>
+            ))}
+          </select>
+          <select
+            value={priorityFilter}
+            onChange={(e) => {
+              setPage(0);
+              setPriorityFilter(e.target.value);
+            }}
+            className="rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm font-medium text-slate-800 focus:border-navy focus:outline-none"
+          >
+            <option value="">Tüm Öncelikler</option>
+            {Object.entries(PRIORITY_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
+      {viewMode === 'cards' ? (
+        <div className="space-y-4">
+          {filtered.length === 0 ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
+              {loading ? 'Yükleniyor...' : 'Seçili filtreye uyan hizmet talebi / arıza bulunamadı.'}
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {filtered.map((t) => {
+                const loc = t.locations?.name
+                  ? `${t.locations.floors?.name ? `${t.locations.floors.name} - ` : ''}${t.locations.name}`
+                  : t.custom_location ?? '-';
+                const cat = t.categories?.name ?? t.custom_category ?? 'Teknik Arıza';
+                const eq = t.equipments ? `(${t.equipments.code}) ${t.equipments.name}` : null;
+
+                return (
+                  <div
+                    key={t.id}
+                    className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-300"
+                  >
+                    <div>
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="text-sm font-extrabold text-slate-900">
+                            Teknik / {cat}
+                          </div>
+                          {eq && (
+                            <div className="mt-0.5 text-xs font-extrabold text-navy">
+                              {eq}
+                            </div>
+                          )}
+                        </div>
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-extrabold ${priorityBadgeClass(
+                            t.priority
+                          )}`}
+                        >
+                          {PRIORITY_LABELS[t.priority] ?? t.priority}
+                        </span>
+                      </div>
+
+                      <div className="mt-1.5 flex items-center justify-between text-xs font-bold text-slate-700">
+                        <span>{formatDateTime(t.created_at)}</span>
+                        <span className="text-slate-400">
+                          #{t.ticket_number ?? t.id.slice(0, 8)}
+                        </span>
+                      </div>
+
+                      <div className="my-3 border-t border-slate-100" />
+
+                      <div className="space-y-1.5 text-xs">
+                        <div className="flex">
+                          <span className="w-28 shrink-0 text-slate-400">Lokasyon</span>
+                          <span className="font-semibold text-slate-800">: {loc}</span>
+                        </div>
+                        <div className="flex items-center">
+                          <span className="w-28 shrink-0 text-slate-400">Durum</span>
+                          <span className="mr-1 text-slate-400">:</span>
+                          <span
+                            className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-extrabold ${statusBadgeClass(
+                              t.status
+                            )}`}
+                          >
+                            {TICKET_STATUS_LABELS[t.status] ?? t.status}
+                          </span>
+                        </div>
+                        <div className="flex">
+                          <span className="w-28 shrink-0 text-slate-400">Bildiren Kişi</span>
+                          <span className="font-semibold text-slate-700">
+                            : {t.profiles?.full_name ?? '-'}
+                          </span>
+                        </div>
+                        <div className="flex">
+                          <span className="w-28 shrink-0 text-slate-400">Açıklama</span>
+                          <span className="line-clamp-2 font-medium text-slate-600">
+                            : {t.description || '-'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap items-center justify-end gap-1.5 border-t border-slate-100 pt-3">
+                      <button
+                        type="button"
+                        onClick={() => loadDetail(t)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-turquoise/30 bg-turquoise-soft/60 px-2.5 py-1 text-xs font-bold text-turquoise hover:bg-turquoise-soft"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        İncele & Fotoğraflar
+                      </button>
+
+                      {t.status === 'resolved' &&
+                        canApprove &&
+                        (canManage || t.reporter_id === profile?.id) && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleConfirm(t.id, false)}
+                              className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-emerald-700"
+                            >
+                              Onayla
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleConfirm(t.id, true)}
+                              className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-bold text-red-700 hover:bg-red-100"
+                            >
+                              İade
+                            </button>
+                          </>
+                        )}
+
+                      {canEdit && (
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(t)}
+                          title="Düzenle"
+                          className="rounded-lg border border-slate-200 p-1.5 text-slate-600 hover:border-navy hover:bg-navy-soft hover:text-navy"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+
+                      {canDelete && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteTicket(t)}
+                          title="Sil"
+                          className="rounded-lg border border-slate-200 p-1.5 text-red-600 hover:border-red-300 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600">
+            <span>Sayfa {page + 1}</span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={page === 0}
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                className="rounded-lg border border-slate-300 px-3 py-1 disabled:opacity-40"
+              >
+                Önceki
+              </button>
+              <button
+                type="button"
+                disabled={rows.length < PAGE_SIZE}
+                onClick={() => setPage((p) => p + 1)}
+                className="rounded-lg border border-slate-300 px-3 py-1 disabled:opacity-40"
+              >
+                Sonraki
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -939,6 +1193,7 @@ export default function WorkTrackingTicketsPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Yeni Arıza Modalı (Fotoğraf Yükleme Dahil) */}
       {showNew && (
