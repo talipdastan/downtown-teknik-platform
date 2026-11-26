@@ -6,15 +6,32 @@ import '../auth/auth_provider.dart';
 import '../modules/app_module.dart';
 import '../permissions/permission_models.dart';
 import '../theme/app_theme.dart';
+import '../update/app_update_service.dart';
 import '../widgets/modern_shell_widgets.dart';
 
 /// Platform Ana Ekranı (Tasarım B – Lacivert & Turkuaz):
 /// En üstte İsim Soy İsim + Ünvan, ortada kompakt modül kartları, altta yüzen bar.
-class ModuleLauncherScreen extends ConsumerWidget {
+class ModuleLauncherScreen extends ConsumerStatefulWidget {
   const ModuleLauncherScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ModuleLauncherScreen> createState() =>
+      _ModuleLauncherScreenState();
+}
+
+class _ModuleLauncherScreenState extends ConsumerState<ModuleLauncherScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        AppUpdateService.checkAndPrompt(context);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
     final profile = auth.profile;
     final registry = ref.watch(moduleRegistryProvider);
@@ -92,7 +109,8 @@ class ModuleLauncherScreen extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(16),
                     onTap: () => context.go('/admin/users'),
                     child: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       child: Row(
                         children: [
                           PastelIconBox(
@@ -175,7 +193,8 @@ class _ModuleCard extends StatelessWidget {
               children: [
                 PastelIconBox(
                   icon: module.icon,
-                  color: disabled ? AppColors.textSecondary : module.accentColor,
+                  color:
+                      disabled ? AppColors.textSecondary : module.accentColor,
                   background: disabled
                       ? AppColors.background
                       : _softBg(module.accentColor),

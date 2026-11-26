@@ -104,6 +104,15 @@ export default function LoginPage() {
             {loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
           </button>
         </form>
+
+        <div className="mt-6 border-t border-slate-100 pt-4 text-center">
+          <a
+            href="/download"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-turquoise/40 bg-turquoise-soft/50 px-4 py-2.5 text-xs font-extrabold text-turquoise transition hover:bg-turquoise-soft"
+          >
+            <span>📱 Android APK İndir / Telefona Uygulama Olarak Yükle</span>
+          </a>
+        </div>
       </div>
     </main>
   );

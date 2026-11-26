@@ -1,0 +1,13 @@
+{
+  "version": "1.2.0",
+  "buildNumber": 3,
+  "releaseDate": "2026-11-26T12:35:00+03:00",
+  "apkUrl": "http://10.16.19.19/download/downtown-teknik.apk",
+  "mandatory": false,
+  "releaseNotes": [
+    "Senyonet tarzı Koyu Lacivert Hero İş Yükü Özeti ve Haftalık Takvim eklendi.",
+    "2x2 Bento Operasyon kutuları ve Aktif/Kapanan sekmeli yeni arıza kartları eklendi.",
+    "Dar ve yakınlaştırılmış Android ekranlar için otomatik ölçekleme ve sabit alt buton düzeltmesi yapıldı.",
+    "Uygulama içi otomatik sürüm kontrolü ve tek tuşla APK güncelleme sistemi eklendi."
+  ]
+}

@@ -7,6 +7,7 @@ import '../config/supabase_config.dart';
 import '../network/api_client.dart';
 import '../permissions/permission_models.dart';
 import '../theme/app_theme.dart';
+import '../update/app_update_service.dart';
 import '../utils/error_utils.dart';
 import '../widgets/common_widgets.dart';
 import '../widgets/modern_shell_widgets.dart';
@@ -696,7 +697,64 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ),
                   const SizedBox(height: 14),
 
-                  // 4) Oturumu Kapat
+                  // 4) Uygulama Sürümü & Otomatik Güncelleme (OTA) Kartı
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: AppColors.turquoiseSoft,
+                              borderRadius: BorderRadius.circular(11),
+                            ),
+                            child: const Icon(
+                              Icons.system_update_rounded,
+                              color: AppColors.accentTurquoise,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Uygulama Sürümü & Güncelleme',
+                                  style: TextStyle(
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.primaryNavy,
+                                  ),
+                                ),
+                                SizedBox(height: 2),
+                                Text(
+                                  'Sürüm: v${AppUpdateService.currentVersion} (Yapı #${AppUpdateService.currentBuildNumber})',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: () => AppUpdateService.checkAndPrompt(
+                              context,
+                              manual: true,
+                            ),
+                            icon: const Icon(Icons.refresh_rounded, size: 16),
+                            label: const Text('Denetle'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // 5) Oturumu Kapat
                   OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.priorityUrgent,

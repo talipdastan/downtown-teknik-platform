@@ -423,7 +423,14 @@ export default function DashboardLayout({
         )}
       </nav>
 
-      <div className="border-t border-slate-200 p-3">
+      <div className="border-t border-slate-200 p-3 space-y-2">
+        <Link
+          href="/download"
+          onClick={() => setMobileMenuOpen(false)}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-turquoise/40 bg-turquoise-soft/50 px-3 py-2 text-xs font-extrabold text-turquoise transition hover:bg-turquoise-soft"
+        >
+          <span>📱 Mobil Uygulama (APK / PWA)</span>
+        </Link>
         <button
           onClick={handleSignOut}
           className="flex w-full items-center gap-2.5 rounded-xl border border-red-200 bg-red-50/70 px-3 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100"
