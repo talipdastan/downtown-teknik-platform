@@ -45,7 +45,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         body: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 420),
                 child: Form(
@@ -55,7 +55,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     children: [
                       Center(
                         child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 320),
+                          constraints: const BoxConstraints(maxWidth: 260, maxHeight: 72),
                           child: Image.asset(
                             'assets/branding/downtown_teknik_logo.png',
                             fit: BoxFit.contain,
@@ -68,7 +68,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 28),
+                      const SizedBox(height: 20),
                       TextFormField(
                         controller: _identifierCtrl,
                         decoration: const InputDecoration(
@@ -80,7 +80,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ? 'Zorunlu alan'
                             : null,
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
                       TextFormField(
                         controller: _passwordCtrl,
                         obscureText: _obscure,
@@ -102,7 +102,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             (v == null || v.isEmpty) ? 'Parola giriniz' : null,
                       ),
                       if (auth.errorMessage != null) ...[
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 10),
                         Text(
                           auth.errorMessage!,
                           style: const TextStyle(
@@ -111,7 +111,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           ),
                         ),
                       ],
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 18),
                       FilledButton(
                         onPressed: isLoading ? null : _submit,
                         child: isLoading
@@ -125,7 +125,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               )
                             : const Text('Giriş Yap'),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 8),
                       TextButton(
                         onPressed:
                             isLoading ? null : () => context.go('/register'),

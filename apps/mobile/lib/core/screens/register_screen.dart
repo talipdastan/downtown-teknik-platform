@@ -63,7 +63,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         ),
         body: SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 420),
@@ -81,7 +81,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         validator: (v) =>
                             (v == null || v.trim().length < 3) ? 'Ad Soyad giriniz' : null,
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 10),
                       TextFormField(
                         controller: _phoneCtrl,
                         keyboardType: TextInputType.phone,
@@ -90,7 +90,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           prefixIcon: Icon(Icons.phone_outlined),
                         ),
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 10),
                       TextFormField(
                         controller: _emailCtrl,
                         keyboardType: TextInputType.emailAddress,
@@ -102,7 +102,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                             ? 'Geçerli bir e-posta giriniz'
                             : null,
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 10),
                       TextFormField(
                         controller: _passwordCtrl,
                         obscureText: true,
@@ -115,13 +115,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                             : null,
                       ),
                       if (auth.errorMessage != null) ...[
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 10),
                         Text(
                           auth.errorMessage!,
                           style: const TextStyle(color: AppColors.priorityUrgent),
                         ),
                       ],
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 16),
                       FilledButton(
                         onPressed: isLoading ? null : _submit,
                         child: isLoading
@@ -135,7 +135,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                               )
                             : const Text('Kayıt Oluştur'),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 10),
                       const Text(
                         'Yeni kayıtlar güvenlik gereği yönetici onayından sonra aktif olur.',
                         textAlign: TextAlign.center,

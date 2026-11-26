@@ -62,6 +62,8 @@ class AppTheme {
       useMaterial3: true,
       brightness: Brightness.light,
       colorScheme: colorScheme,
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       scaffoldBackgroundColor: AppColors.background,
       appBarTheme: const AppBarTheme(
         backgroundColor: AppColors.white,
@@ -70,12 +72,13 @@ class AppTheme {
         elevation: 0,
         scrolledUnderElevation: 0.5,
         centerTitle: false,
+        toolbarHeight: 50,
         titleTextStyle: TextStyle(
           color: AppColors.textPrimary,
-          fontSize: 17,
+          fontSize: 16,
           fontWeight: FontWeight.w800,
         ),
-        iconTheme: IconThemeData(color: AppColors.primaryNavy, size: 22),
+        iconTheme: IconThemeData(color: AppColors.primaryNavy, size: 21),
       ),
       cardTheme: CardThemeData(
         color: AppColors.surface,
@@ -83,7 +86,7 @@ class AppTheme {
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
           side: const BorderSide(color: AppColors.border),
         ),
       ),
@@ -123,7 +126,7 @@ class AppTheme {
         filled: true,
         fillColor: AppColors.surface,
         isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: AppColors.border),
@@ -143,8 +146,8 @@ class AppTheme {
           foregroundColor: Colors.white,
           disabledBackgroundColor: AppColors.border,
           disabledForegroundColor: AppColors.textSecondary,
-          minimumSize: const Size(64, 42),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          minimumSize: const Size(64, 40),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -157,8 +160,8 @@ class AppTheme {
           foregroundColor: Colors.white,
           disabledBackgroundColor: AppColors.border,
           disabledForegroundColor: AppColors.textSecondary,
-          minimumSize: const Size(64, 42),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          minimumSize: const Size(64, 40),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -171,8 +174,8 @@ class AppTheme {
           foregroundColor: AppColors.primaryNavy,
           disabledForegroundColor: AppColors.textSecondary,
           side: const BorderSide(color: AppColors.border),
-          minimumSize: const Size(64, 42),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          minimumSize: const Size(64, 40),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),

@@ -372,10 +372,10 @@ class _UsersManagementScreenState extends ConsumerState<UsersManagementScreen> {
             final modMap = modulePerms[modKey]!;
             final isModEnabled = modMap[ModulePermission.enabled.key] ?? false;
             return Container(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: AppColors.background,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: AppColors.border),
               ),
               child: Column(
@@ -387,7 +387,7 @@ class _UsersManagementScreenState extends ConsumerState<UsersManagementScreen> {
                         child: Text(
                           title,
                           style: const TextStyle(
-                            fontSize: 13,
+                            fontSize: 12.5,
                             fontWeight: FontWeight.w800,
                             color: AppColors.primaryNavy,
                           ),
@@ -401,17 +401,20 @@ class _UsersManagementScreenState extends ConsumerState<UsersManagementScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
+                    spacing: 4,
+                    runSpacing: 4,
                     children: ModulePermission.values.map((perm) {
                       final checked = modMap[perm.key] ?? false;
                       return FilterChip(
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        labelPadding: const EdgeInsets.symmetric(horizontal: 2),
                         label: Text(
                           perm.label,
                           style: TextStyle(
-                            fontSize: 11.5,
+                            fontSize: 11,
                             fontWeight:
                                 checked ? FontWeight.w700 : FontWeight.w600,
                             color: checked

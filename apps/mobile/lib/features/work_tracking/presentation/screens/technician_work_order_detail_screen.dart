@@ -283,16 +283,22 @@ class _TechnicianWorkOrderDetailScreenState
                         Expanded(
                           child: OutlinedButton.icon(
                             onPressed: _busy ? null : _pause,
-                            icon: const Icon(Icons.pause),
-                            label: const Text('Beklemeye Al'),
+                            icon: const Icon(Icons.pause, size: 17),
+                            label: const FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text('Beklemeye Al'),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: OutlinedButton.icon(
                             onPressed: _busy ? null : _addMaterial,
-                            icon: const Icon(Icons.build),
-                            label: const Text('Malzeme Ekle'),
+                            icon: const Icon(Icons.build, size: 17),
+                            label: const FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text('Malzeme Ekle'),
+                            ),
                           ),
                         ),
                       ],

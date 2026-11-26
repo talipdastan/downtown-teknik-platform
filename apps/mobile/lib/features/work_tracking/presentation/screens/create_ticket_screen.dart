@@ -203,17 +203,34 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Yeni Arıza Bildirimi')),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+          decoration: const BoxDecoration(
+            color: AppColors.white,
+            border: Border(top: BorderSide(color: AppColors.border)),
+          ),
+          child: SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: (_submitting || blockedByPendingLimit) ? null : _submit,
+              child: Text(_submitting ? 'Gönderiliyor...' : 'Arıza Kaydı Oluştur'),
+            ),
+          ),
+        ),
+      ),
       body: SafeArea(
         top: false,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (blockedByPendingLimit)
                 Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     color: Colors.amber.shade50,
                     border: Border.all(color: Colors.amber.shade400),
@@ -222,7 +239,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                   child: Text(
                     'Onayınızda bekleyen $pendingCount adet tamamlanmış iş isteği bulunmaktadır. '
                     'Yeni iş isteği açabilmek için önce Arızalarım bölümünden onay bekleyen kayıtlarınızı onaylayınız.',
-                    style: TextStyle(color: Colors.amber.shade900, fontSize: 13),
+                    style: TextStyle(color: Colors.amber.shade900, fontSize: 12),
                   ),
                 ),
               _dropdown(
@@ -250,7 +267,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                   }),
                 ),
                 if (_locationId == _otherValue) ...[
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   TextField(
                     controller: _customLocationCtrl,
                     decoration: const InputDecoration(
@@ -272,7 +289,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                 }),
               ),
               if (_categoryId == _otherValue) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 TextField(
                   controller: _customCategoryCtrl,
                   decoration: const InputDecoration(
@@ -316,8 +333,8 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
               ),
               const SectionTitle('Öncelik'),
               Wrap(
-                spacing: 8,
-                runSpacing: 8,
+                spacing: 6,
+                runSpacing: 6,
                 children: [
                   for (final entry in const [
                     ('normal', 'Normal', AppColors.primaryNavy),
@@ -328,7 +345,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                       label: Text(
                         entry.$2,
                         style: TextStyle(
-                          fontSize: 12.5,
+                          fontSize: 12,
                           fontWeight: FontWeight.w700,
                           color: _priority == entry.$1
                               ? Colors.white
@@ -352,7 +369,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
               const SectionTitle('Arıza Açıklaması'),
               TextField(
                 controller: _descCtrl,
-                maxLines: 4,
+                maxLines: 2,
                 maxLength: 1000,
                 decoration: const InputDecoration(hintText: 'Arızayı kısaca açıklayınız...'),
               ),
@@ -365,13 +382,14 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                     PhotoPreview(
                       key: ValueKey(_images[i].path),
                       file: _images[i],
+                      size: 76,
                       onRemove: () => setState(() => _images.removeAt(i)),
                     ),
                   InkWell(
                     onTap: _submitting ? null : _addPhoto,
                     child: Container(
-                      width: 96,
-                      height: 96,
+                      width: 76,
+                      height: 76,
                       decoration: BoxDecoration(
                         color: Colors.white,
                         border: Border.all(color: AppColors.border),
@@ -380,20 +398,15 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                       child: const Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.add_a_photo, color: AppColors.primaryNavy),
-                          SizedBox(height: 4),
+                          Icon(Icons.add_a_photo, size: 20, color: AppColors.primaryNavy),
+                          SizedBox(height: 2),
                           Text('Fotoğraf Ekle',
-                              style: TextStyle(fontSize: 11, color: AppColors.primaryNavy)),
+                              style: TextStyle(fontSize: 10.5, color: AppColors.primaryNavy)),
                         ],
                       ),
                     ),
                   ),
                 ],
-              ),
-              const SizedBox(height: 32),
-              ElevatedButton(
-                onPressed: (_submitting || blockedByPendingLimit) ? null : _submit,
-                child: Text(_submitting ? 'Gönderiliyor...' : 'Arıza Kaydı Oluştur'),
               ),
             ],
           ),

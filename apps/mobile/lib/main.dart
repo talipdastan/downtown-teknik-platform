@@ -48,8 +48,38 @@ class AvmTechPlatformApp extends ConsumerWidget {
       locale: const Locale('tr', 'TR'),
       builder: (context, child) {
         final mq = MediaQuery.of(context);
-        final clamped =
-            mq.textScaler.clamp(minScaleFactor: 0.85, maxScaleFactor: 1.05);
+        final rawSize = mq.size;
+        const minTargetWidth = 376.0;
+        if (rawSize.width > 0 && rawSize.width < minTargetWidth) {
+          final scale = rawSize.width / minTargetWidth;
+          final scaledHeight = rawSize.height / scale;
+          final clamped = mq.textScaler.clamp(
+            minScaleFactor: 0.85,
+            maxScaleFactor: 0.96,
+          );
+          return FittedBox(
+            fit: BoxFit.fill,
+            alignment: Alignment.topCenter,
+            child: SizedBox(
+              width: minTargetWidth,
+              height: scaledHeight,
+              child: MediaQuery(
+                data: mq.copyWith(
+                  size: Size(minTargetWidth, scaledHeight),
+                  padding: mq.padding / scale,
+                  viewPadding: mq.viewPadding / scale,
+                  viewInsets: mq.viewInsets / scale,
+                  textScaler: clamped,
+                ),
+                child: child ?? const SizedBox.shrink(),
+              ),
+            ),
+          );
+        }
+        final clamped = mq.textScaler.clamp(
+          minScaleFactor: 0.85,
+          maxScaleFactor: 0.96,
+        );
         return MediaQuery(
           data: mq.copyWith(textScaler: clamped),
           child: child ?? const SizedBox.shrink(),

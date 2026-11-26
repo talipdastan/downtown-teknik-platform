@@ -657,64 +657,100 @@ class _EnergyInvoicesScreenState extends ConsumerState<EnergyInvoicesScreen>
         : yearInvoices.where((i) => i.periodMonth == _selectedMonth).toList();
 
     return ListView(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(10),
       children: [
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Wrap(
-              spacing: 12,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
+            padding: const EdgeInsets.all(10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                DropdownButton<int>(
-                  value: _selectedYear,
-                  items: [
-                    for (int y = DateTime.now().year - 2;
-                        y <= DateTime.now().year + 1;
-                        y++)
-                      DropdownMenuItem(value: y, child: Text('$y')),
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<int>(
+                        initialValue: _selectedYear,
+                        decoration: const InputDecoration(
+                          labelText: 'Yıl',
+                          isDense: true,
+                        ),
+                        items: [
+                          for (int y = DateTime.now().year - 2;
+                              y <= DateTime.now().year + 1;
+                              y++)
+                            DropdownMenuItem(value: y, child: Text('$y')),
+                        ],
+                        onChanged: (v) {
+                          if (v != null) setState(() => _selectedYear = v);
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 2,
+                      child: DropdownButtonFormField<int>(
+                        initialValue: _selectedMonth,
+                        decoration: const InputDecoration(
+                          labelText: 'Dönem (Ay)',
+                          isDense: true,
+                        ),
+                        items: [
+                          for (int m = 0; m <= 12; m++)
+                            DropdownMenuItem(value: m, child: Text(_months[m])),
+                        ],
+                        onChanged: (v) {
+                          if (v != null) setState(() => _selectedMonth = v);
+                        },
+                      ),
+                    ),
                   ],
-                  onChanged: (v) {
-                    if (v != null) setState(() => _selectedYear = v);
-                  },
                 ),
-                DropdownButton<int>(
-                  value: _selectedMonth,
-                  items: [
-                    for (int m = 0; m <= 12; m++)
-                      DropdownMenuItem(value: m, child: Text(_months[m])),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: FilledButton.icon(
+                        onPressed: (yearInvoices.isEmpty && budgets.isEmpty)
+                            ? null
+                            : () => showEnergyReportWizardSheet(
+                                  context,
+                                  initialYear: _selectedYear,
+                                  initialMonth: _selectedMonth,
+                                  initialPreset: 'executive',
+                                  invoices: yearInvoices,
+                                  budgets: budgets,
+                                  meters: meters,
+                                ),
+                        icon: const Icon(Icons.tune_rounded, size: 17),
+                        label: const Text(
+                          'Rapor Sihirbazı',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 2,
+                      child: OutlinedButton.icon(
+                        onPressed: yearInvoices.isEmpty
+                            ? null
+                            : () => EnergyExcelService.exportMonthlyInvoicesReport(
+                                  context,
+                                  year: _selectedYear,
+                                  invoices: yearInvoices,
+                                  budgets: budgets,
+                                ),
+                        icon: const Icon(Icons.download_outlined, size: 17),
+                        label: const Text(
+                          'Hızlı Excel',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
                   ],
-                  onChanged: (v) {
-                    if (v != null) setState(() => _selectedMonth = v);
-                  },
-                ),
-                FilledButton.icon(
-                  onPressed: (yearInvoices.isEmpty && budgets.isEmpty)
-                      ? null
-                      : () => showEnergyReportWizardSheet(
-                            context,
-                            initialYear: _selectedYear,
-                            initialMonth: _selectedMonth,
-                            initialPreset: 'executive',
-                            invoices: yearInvoices,
-                            budgets: budgets,
-                            meters: meters,
-                          ),
-                  icon: const Icon(Icons.tune_rounded, size: 18),
-                  label: const Text('Rapor Sihirbazı'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: yearInvoices.isEmpty
-                      ? null
-                      : () => EnergyExcelService.exportMonthlyInvoicesReport(
-                            context,
-                            year: _selectedYear,
-                            invoices: yearInvoices,
-                            budgets: budgets,
-                          ),
-                  icon: const Icon(Icons.download_outlined, size: 18),
-                  label: const Text('Hızlı Excel'),
                 ),
               ],
             ),

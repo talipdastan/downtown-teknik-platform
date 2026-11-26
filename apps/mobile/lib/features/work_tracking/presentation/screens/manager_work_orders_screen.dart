@@ -146,10 +146,26 @@ class _ManagerWorkOrdersScreenState extends ConsumerState<ManagerWorkOrdersScree
             labelColor: AppColors.primaryNavy,
             unselectedLabelColor: AppColors.textSecondary,
             indicatorColor: AppColors.accentTurquoise,
+            labelPadding: const EdgeInsets.symmetric(horizontal: 6),
             tabs: [
-              Tab(text: 'İş Ata ($assignCount)'),
-              Tab(text: 'Onayla ($reviewCount)'),
-              Tab(text: 'Sahada ($activeCount)'),
+              Tab(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text('İş Ata ($assignCount)'),
+                ),
+              ),
+              Tab(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text('Onayla ($reviewCount)'),
+                ),
+              ),
+              Tab(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text('Sahada ($activeCount)'),
+                ),
+              ),
             ],
           ),
         ),

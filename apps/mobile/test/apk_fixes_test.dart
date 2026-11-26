@@ -25,6 +25,17 @@ import 'package:avm_tech_platform/features/energy/presentation/widgets/energy_re
 import 'package:avm_tech_platform/features/energy/providers/energy_providers.dart';
 import 'package:avm_tech_platform/features/energy/services/energy_excel_service.dart';
 import 'package:avm_tech_platform/features/energy/services/invoice_parser_service.dart';
+import 'package:avm_tech_platform/core/equipment/equipment_providers.dart';
+import 'package:avm_tech_platform/core/screens/login_screen.dart';
+import 'package:avm_tech_platform/core/screens/register_screen.dart';
+import 'package:avm_tech_platform/features/energy/presentation/screens/energy_invoices_screen.dart';
+import 'package:avm_tech_platform/features/work_tracking/data/models/extra_models.dart';
+import 'package:avm_tech_platform/features/work_tracking/data/models/ticket_model.dart';
+import 'package:avm_tech_platform/features/work_tracking/presentation/screens/create_ticket_screen.dart';
+import 'package:avm_tech_platform/features/work_tracking/presentation/screens/manager_work_orders_screen.dart';
+import 'package:avm_tech_platform/features/work_tracking/presentation/screens/ticket_list_screen.dart';
+import 'package:avm_tech_platform/features/work_tracking/presentation/screens/work_tracking_home_screen.dart';
+import 'package:avm_tech_platform/features/work_tracking/providers/data_providers.dart';
 
 void main() {
   final now = DateTime(2026, 11, 20, 14, 30);
@@ -1121,6 +1132,140 @@ void main() {
       expect(find.text('12 Aylık Yatay Matris'), findsOneWidget);
       expect(find.text('1. Çeyrek (Oca–Mar)'), findsOneWidget);
       expect(find.text('Özelleştirilmiş Excel Raporu İndir'), findsOneWidget);
+    });
+
+    testWidgets('320x568 küçük ekranda CreateTicketScreen, LoginScreen, RegisterScreen, ManagerWorkOrdersScreen ve EnergyInvoicesScreen taşmasız render edilir', (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final admin = buildProfile(
+        role: 'system_admin',
+        fullName: 'Talip Daştan',
+        customRole: 'Sistem Yöneticisi',
+      );
+
+      // 1) CreateTicketScreen (sabit alt gönder butonu taşmadan görünür)
+      await tester.pumpWidget(
+        wrapWithAuth(
+          profile: admin,
+          extraOverrides: [
+            floorsProvider.overrideWith((_) async => const [LookupItem(id: 'f-1', name: 'Zemin Kat')]),
+            categoriesProvider.overrideWith((_) async => const [LookupItem(id: 'c-1', name: 'İklimlendirme')]),
+            equipmentOptionsProvider.overrideWith((_) async => const []),
+            ticketsProvider.overrideWith((_) async => const <TicketModel>[]),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.lightTheme,
+            home: const CreateTicketScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('Arıza Kaydı Oluştur'), findsOneWidget);
+      final submitBottom = tester.getBottomRight(find.text('Arıza Kaydı Oluştur')).dy;
+      expect(submitBottom, lessThanOrEqualTo(568));
+
+      // 2) LoginScreen & RegisterScreen
+      await tester.pumpWidget(
+        wrapWithAuth(
+          profile: admin,
+          child: MaterialApp(
+            theme: AppTheme.lightTheme,
+            home: const LoginScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('Giriş Yap'), findsOneWidget);
+
+      await tester.pumpWidget(
+        wrapWithAuth(
+          profile: admin,
+          child: MaterialApp(
+            theme: AppTheme.lightTheme,
+            home: const RegisterScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('Kayıt Oluştur'), findsOneWidget);
+
+      // 3) HomeScreen (İş Takip Ana Ekranı) & ManagerWorkOrdersScreen & TicketListScreen
+      await tester.pumpWidget(
+        wrapWithAuth(
+          profile: admin,
+          extraOverrides: [
+            ticketsProvider.overrideWith((_) async => const <TicketModel>[]),
+            myWorkOrdersProvider.overrideWith((_) async => const <WorkOrderView>[]),
+            pendingAssignmentTicketsProvider.overrideWith((_) async => const <TicketModel>[]),
+            pendingReviewTicketsProvider.overrideWith((_) async => const <TicketModel>[]),
+            activeManagerWorkOrdersProvider.overrideWith((_) async => const <WorkOrderView>[]),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.lightTheme,
+            home: const HomeScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(
+        wrapWithAuth(
+          profile: admin,
+          extraOverrides: [
+            pendingAssignmentTicketsProvider.overrideWith((_) async => const <TicketModel>[]),
+            pendingReviewTicketsProvider.overrideWith((_) async => const <TicketModel>[]),
+            activeManagerWorkOrdersProvider.overrideWith((_) async => const <WorkOrderView>[]),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.lightTheme,
+            home: const ManagerWorkOrdersScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(
+        wrapWithAuth(
+          profile: admin,
+          extraOverrides: [
+            ticketsProvider.overrideWith((_) async => const <TicketModel>[]),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.lightTheme,
+            home: const TicketListScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+
+      // 4) EnergyInvoicesScreen
+      await tester.pumpWidget(
+        wrapWithAuth(
+          profile: admin,
+          extraOverrides: [
+            metersProvider(null).overrideWith((_) async => const <MeterModel>[]),
+            energyInvoicesProvider(DateTime.now().year).overrideWith((_) async => sampleInvoices),
+            energyBudgetsProvider(DateTime.now().year).overrideWith((_) async => sampleBudgets),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.lightTheme,
+            home: const EnergyInvoicesScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('Rapor Sihirbazı'), findsOneWidget);
+      expect(find.text('Hızlı Excel'), findsOneWidget);
     });
   });
 }
