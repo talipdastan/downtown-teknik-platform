@@ -27,10 +27,7 @@ class _ManagerWorkOrdersScreenState extends ConsumerState<ManagerWorkOrdersScree
   bool _busy = false;
 
   void _refreshAll() {
-    ref.invalidate(pendingAssignmentTicketsProvider);
-    ref.invalidate(pendingReviewTicketsProvider);
-    ref.invalidate(activeManagerWorkOrdersProvider);
-    ref.invalidate(ticketsProvider);
+    invalidateAllWorkTrackingProviders(ref);
   }
 
   String _locationLabel(TicketModel t) {

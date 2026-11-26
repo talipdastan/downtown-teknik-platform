@@ -122,7 +122,7 @@ export default function WorkTrackingWorkOrdersPage() {
         supabase
           .from('tickets')
           .select('id, ticket_number, description, priority, status')
-          .in('status', ['new', 'under_review', 'assigned', 'in_progress', 'waiting'])
+          .in('status', ['new', 'under_review'])
           .order('created_at', { ascending: false })
           .limit(100),
         supabase.from('departments').select('id, name').eq('is_active', true).order('name'),
@@ -154,6 +154,26 @@ export default function WorkTrackingWorkOrdersPage() {
 
   useEffect(() => {
     loadAll();
+    const supabase = createClient();
+    const channel = supabase
+      .channel('wt-work-orders-live')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'work_orders' },
+        () => loadAll()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'tickets' },
+        () => loadAll()
+      )
+      .subscribe();
+    const onFocus = () => loadAll();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      supabase.removeChannel(channel);
+    };
   }, [loadAll]);
 
   const filteredOrders = useMemo(() => {

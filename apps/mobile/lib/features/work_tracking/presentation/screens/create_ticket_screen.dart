@@ -129,7 +129,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
         }
       }
 
-      ref.invalidate(ticketsProvider);
+      invalidateAllWorkTrackingProviders(ref, ticketId);
       if (!mounted) return;
       showAppSnack(
         context,

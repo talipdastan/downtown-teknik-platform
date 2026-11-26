@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
@@ -11,12 +11,13 @@ import {
   Clock,
   FileText,
   Layers,
+  RefreshCw,
 } from 'lucide-react';
 import { createClient } from '@/core/supabase/client';
 import { formatDateTime, PRIORITY_LABELS, TICKET_STATUS_LABELS } from '@/core/constants';
 import { useDashboardAuth } from '@/core/DashboardContext';
 import { canAccessDashboardPath } from '@/core/moduleRegistry';
-import { TicketPriority, TicketStatus } from '@/types/database';
+import { TicketPriority, TicketStatus, WorkOrderStatus } from '@/types/database';
 
 type Summary = {
   total_open: number;
@@ -30,6 +31,7 @@ type Summary = {
 type RecentTicket = {
   id: string;
   ticket_number: string | null;
+  reporter_id: string;
   description: string;
   priority: TicketPriority;
   status: TicketStatus;
@@ -40,6 +42,12 @@ type RecentTicket = {
   categories?: { name: string } | null;
   equipments?: { code: string; name: string } | null;
   profiles?: { full_name: string } | null;
+};
+
+type MyWorkOrderRow = {
+  id: string;
+  status: WorkOrderStatus;
+  created_at: string;
 };
 
 const WEEKDAY_NAMES = ['Pzt', 'Salı', 'Çrş', 'Prş', 'Cuma', 'Cmt', 'Pzr'];
@@ -55,7 +63,7 @@ function isSameLocalDay(a: Date, b: Date): boolean {
 function getCurrentWeekDays(): Date[] {
   const now = new Date();
   const normalized = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const day = normalized.getDay(); // 0=Pzr, 1=Pzt
+  const day = normalized.getDay();
   const diffToMonday = day === 0 ? -6 : 1 - day;
   const monday = new Date(normalized);
   monday.setDate(normalized.getDate() + diffToMonday);
@@ -70,29 +78,63 @@ export default function WorkTrackingOverviewPage() {
   const { profile, serverModules } = useDashboardAuth();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [recent, setRecent] = useState<RecentTicket[]>([]);
+  const [myOrders, setMyOrders] = useState<MyWorkOrderRow[]>([]);
+  const [unassignedCount, setUnassignedCount] = useState<number>(0);
+  const [activeWoCount, setActiveWoCount] = useState<number>(0);
   const [closedTotal, setClosedTotal] = useState<number>(0);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function loadOverview() {
-    setLoading(true);
+  const loadOverview = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const supabase = createClient();
-      const [sumRes, recRes, closedRes] = await Promise.all([
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const uid = user?.id;
+
+      const [
+        sumRes,
+        recRes,
+        unassignedRes,
+        activeWoRes,
+        closedRes,
+        myWoRes,
+      ] = await Promise.all([
         supabase.rpc('rpc_work_tracking_summary'),
         supabase
           .from('tickets')
           .select(
-            'id, ticket_number, description, priority, status, created_at, custom_location, custom_category, locations(name, floors(name)), categories(name), equipments(code, name), profiles!tickets_reporter_id_fkey(full_name)'
+            'id, ticket_number, reporter_id, description, priority, status, created_at, custom_location, custom_category, locations(name, floors(name)), categories(name), equipments(code, name), profiles!tickets_reporter_id_fkey(full_name)'
           )
           .order('created_at', { ascending: false })
-          .limit(30),
+          .limit(40),
+        // 1. Kutu: Henüz iş emrine dönüştürülmemiş (Atama Bekleyen) arızalar
         supabase
           .from('tickets')
           .select('id', { count: 'exact', head: true })
-          .in('status', ['resolved', 'closed']),
+          .in('status', ['new', 'under_review']),
+        // 2. Kutu: Sahada aktif olan (Atandı / İşlemde / Beklemede) iş emirleri
+        supabase
+          .from('work_orders')
+          .select('id', { count: 'exact', head: true })
+          .in('status', ['assigned', 'in_progress', 'waiting']),
+        // 4. Kutu: Onaylanıp kapatılmış kayıtlar
+        supabase
+          .from('tickets')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'closed'),
+        // Sol Koyu Kart ("Üzerimdeki Toplam İşler"): Doğrudan giriş yapan kullanıcıya atanmış iş emirleri
+        uid
+          ? supabase
+              .from('work_orders')
+              .select('id, status, created_at, work_order_assignments!inner(user_id)')
+              .eq('work_order_assignments.user_id', uid)
+              .neq('status', 'cancelled')
+          : Promise.resolve({ data: [], error: null }),
       ]);
 
       if (sumRes.error) throw sumRes.error;
@@ -101,17 +143,49 @@ export default function WorkTrackingOverviewPage() {
       const sumRow = Array.isArray(sumRes.data) ? sumRes.data[0] : sumRes.data;
       setSummary(sumRow ?? null);
       setRecent((recRes.data as unknown as RecentTicket[]) ?? []);
+      setUnassignedCount(unassignedRes.count ?? 0);
+      setActiveWoCount(activeWoRes.count ?? 0);
       setClosedTotal(closedRes.count ?? 0);
+      setMyOrders((myWoRes.data as unknown as MyWorkOrderRow[]) ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Özet verileri yüklenemedi.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     loadOverview();
-  }, []);
+
+    // Supabase Realtime + Pencere Odaklandığında Anlık Otomatik Yenileme
+    const supabase = createClient();
+    const channel = supabase
+      .channel('wt-overview-live')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'tickets' },
+        () => loadOverview(true)
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'work_orders' },
+        () => loadOverview(true)
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'work_order_assignments' },
+        () => loadOverview(true)
+      )
+      .subscribe();
+
+    const onFocus = () => loadOverview(true);
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      supabase.removeChannel(channel);
+    };
+  }, [loadOverview]);
 
   const weekDays = useMemo(() => getCurrentWeekDays(), []);
   const today = useMemo(() => new Date(), []);
@@ -121,13 +195,33 @@ export default function WorkTrackingOverviewPage() {
     return recent.filter((t) => isSameLocalDay(new Date(t.created_at), selectedDay));
   }, [recent, selectedDay]);
 
-  const totalOpen = summary?.total_open ?? 0;
-  const newCount = summary?.new_count ?? 0;
-  const inProgressCount = summary?.in_progress_count ?? 0;
-  const waitingCount = summary?.waiting_count ?? 0;
   const awaitingApprovalCount = summary?.awaiting_approval_count ?? 0;
   const urgentOpenCount = summary?.urgent_open_count ?? 0;
-  const grandTotal = totalOpen + closedTotal;
+
+  // SOL KOYU KART ("Üzerimdeki Toplam İşler"):
+  // Kullanıcıya atanmış iş emri varsa onları, yoksa kendi açtığı arıza kayıtlarını sayar.
+  // Böylece sağdaki "Genel Saha Operasyon Kutuları" ile aynı sayıyı tekrar etmez!
+  const myAssignedCount = myOrders.length;
+  const myOwnReported = recent.filter((t) => t.reporter_id === profile?.id);
+  const useAssignedForHero = myAssignedCount > 0;
+
+  const heroNew = useAssignedForHero
+    ? myOrders.filter((o) => o.status === 'assigned').length
+    : myOwnReported.filter((t) => t.status === 'new' || t.status === 'under_review').length;
+
+  const heroInProgress = useAssignedForHero
+    ? myOrders.filter((o) => o.status === 'in_progress').length
+    : myOwnReported.filter((t) => t.status === 'assigned' || t.status === 'in_progress').length;
+
+  const heroWaiting = useAssignedForHero
+    ? myOrders.filter((o) => o.status === 'waiting').length
+    : myOwnReported.filter((t) => t.status === 'waiting').length;
+
+  const heroCompleted = useAssignedForHero
+    ? myOrders.filter((o) => o.status === 'completed').length
+    : myOwnReported.filter((t) => t.status === 'resolved' || t.status === 'closed').length;
+
+  const heroTotal = heroNew + heroInProgress + heroWaiting + heroCompleted;
 
   return (
     <div className="space-y-5">
@@ -139,16 +233,24 @@ export default function WorkTrackingOverviewPage() {
           </div>
           <h1 className="text-2xl font-extrabold text-navy">İş Takip – Genel Bakış</h1>
           <p className="text-sm text-slate-500">
-            Üzerinizdeki toplam işler, haftalık operasyon takvimi ve hizmet talepleri özeti.
+            Kişisel iş yükünüz, genel saha iş akışı (Atama Bekleyen → Sahada → Onay → Kapanan) ve haftalık takvim.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => loadOverview()}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+          >
+            <RefreshCw className="h-3.5 w-3.5 text-turquoise" />
+            Yenile
+          </button>
           {canAccessDashboardPath(profile, '/work-tracking/tickets', serverModules) && (
             <Link
               href="/work-tracking/tickets"
               className="rounded-xl bg-navy px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-navy-hover"
             >
-              Hizmet Talepleri / Arızalar
+              Arıza Kayıtları ({unassignedCount} Atama Bekleyen)
             </Link>
           )}
           {canAccessDashboardPath(profile, '/work-tracking/work-orders', serverModules) && (
@@ -156,7 +258,7 @@ export default function WorkTrackingOverviewPage() {
               href="/work-tracking/work-orders"
               className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
             >
-              İş Emirleri
+              İş Emirleri ({activeWoCount} Sahada)
             </Link>
           )}
           {canAccessDashboardPath(profile, '/work-tracking/review', serverModules) && (
@@ -176,35 +278,37 @@ export default function WorkTrackingOverviewPage() {
         </div>
       )}
 
-      {/* 1. ÜST BÖLÜM: Koyu Lacivert Hero KPI Kartı + 2x2 Bento Operasyon Izgarası */}
+      {/* 1. ÜST BÖLÜM: Sol Kişisel İş Yükü Kartı + Sağ 4 Aşamalı Genel Saha Operasyon Kutuları */}
       <div className="grid gap-4 lg:grid-cols-12">
-        {/* Koyu Lacivert Hero Kartı ("Üzerimdeki Toplam İşler") */}
+        {/* SOL KART: Kişisel İş Yükü ("Bana Atanan / Açtığım İşler") */}
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0F2342] via-navy to-[#1E4474] p-6 text-white shadow-md lg:col-span-6">
           <div className="pointer-events-none absolute -right-10 -top-10 h-44 w-44 rounded-full bg-white/5" />
           <div className="flex items-center justify-between">
             <div>
               <div className="text-xs font-bold uppercase tracking-wider text-cyan-300">
-                CANLI İŞ YÜKÜ ÖZETİ
+                KİŞİSEL İŞ YÜKÜ ÖZETİ ({profile?.full_name ?? 'Kullanıcı'})
               </div>
               <h2 className="mt-1 text-lg font-extrabold text-white">
-                Üzerimdeki Toplam İşler
+                {useAssignedForHero
+                  ? 'Bana Atanan İş Emirleri'
+                  : 'Üzerimdeki / Açtığım Talepler'}
               </h2>
             </div>
             <div className="rounded-2xl bg-white/10 px-4 py-2 text-3xl font-black tracking-tight text-white">
-              {loading ? '...' : grandTotal}
+              {loading ? '...' : heroTotal}
             </div>
           </div>
 
           <div className="mt-6 grid grid-cols-4 gap-3 text-center">
             <Link
-              href="/work-tracking/tickets"
+              href={useAssignedForHero ? '/work-tracking/work-orders' : '/work-tracking/tickets'}
               className="group flex flex-col items-center rounded-xl p-2 transition hover:bg-white/10"
             >
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-base font-black text-navy shadow-sm">
-                {loading ? '·' : newCount}
+                {loading ? '·' : heroNew}
               </div>
               <span className="mt-2 text-xs font-semibold text-slate-200 group-hover:text-white">
-                Yeni
+                {useAssignedForHero ? 'Yeni Atanan' : 'Yeni'}
               </span>
             </Link>
 
@@ -213,7 +317,7 @@ export default function WorkTrackingOverviewPage() {
               className="group flex flex-col items-center rounded-xl p-2 transition hover:bg-white/10"
             >
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-base font-black text-amber-700 shadow-sm">
-                {loading ? '·' : inProgressCount}
+                {loading ? '·' : heroInProgress}
               </div>
               <span className="mt-2 text-xs font-semibold text-slate-200 group-hover:text-white">
                 İş Devam Ediyor
@@ -225,7 +329,7 @@ export default function WorkTrackingOverviewPage() {
               className="group flex flex-col items-center rounded-xl p-2 transition hover:bg-white/10"
             >
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-base font-black text-orange-600 shadow-sm">
-                {loading ? '·' : waitingCount}
+                {loading ? '·' : heroWaiting}
               </div>
               <span className="mt-2 text-xs font-semibold text-slate-200 group-hover:text-white">
                 Beklemede
@@ -233,66 +337,30 @@ export default function WorkTrackingOverviewPage() {
             </Link>
 
             <Link
-              href="/work-tracking/tickets"
+              href={useAssignedForHero ? '/work-tracking/work-orders' : '/work-tracking/tickets'}
               className="group flex flex-col items-center rounded-xl p-2 transition hover:bg-white/10"
             >
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-base font-black text-emerald-700 shadow-sm">
-                {loading ? '·' : closedTotal}
+                {loading ? '·' : heroCompleted}
               </div>
               <span className="mt-2 text-xs font-semibold text-slate-200 group-hover:text-white">
-                Kapandı
+                Tamamlanan
               </span>
             </Link>
           </div>
         </div>
 
-        {/* 2x2 Bento Operasyon Kutuları (Plan/İş Emri, Hizmet, Kontrol/Onay, Talep Sayısı) */}
+        {/* SAĞ 2x2 BENTO KUTULARI: Tesis Genel Saha İş Akışı (4 Farklı Aşama) */}
         <div className="grid grid-cols-2 gap-3.5 lg:col-span-6">
-          <Link
-            href="/work-tracking/work-orders"
-            className="flex flex-col justify-between rounded-2xl border border-blue-300 bg-blue-50/70 p-4 transition hover:shadow-sm"
-          >
-            <div className="text-sm font-extrabold text-slate-800">Aktif İş Emirleri</div>
-            <div className="mt-4 flex items-end justify-between">
-              <span className="text-2xl font-black text-blue-600">
-                {loading ? '...' : inProgressCount + waitingCount}
-              </span>
-              <Briefcase className="h-6 w-6 text-blue-500" />
-            </div>
-          </Link>
-
-          <Link
-            href="/work-tracking/review"
-            className="flex flex-col justify-between rounded-2xl border border-lime-300 bg-lime-50/70 p-4 transition hover:shadow-sm"
-          >
-            <div className="text-sm font-extrabold text-slate-800">Çözüm Onay / Kontrol</div>
-            <div className="mt-4 flex items-end justify-between">
-              <span className="text-2xl font-black text-lime-700">
-                {loading ? '...' : awaitingApprovalCount}
-              </span>
-              <ClipboardCheck className="h-6 w-6 text-lime-600" />
-            </div>
-          </Link>
-
-          <Link
-            href="/work-tracking/tickets"
-            className="flex flex-col justify-between rounded-2xl border border-teal-300 bg-teal-50/70 p-4 transition hover:shadow-sm"
-          >
-            <div className="text-sm font-extrabold text-slate-800">Kapanan / Tamamlanan</div>
-            <div className="mt-4 flex items-end justify-between">
-              <span className="text-2xl font-black text-teal-600">
-                {loading ? '...' : closedTotal}
-              </span>
-              <CheckCircle2 className="h-6 w-6 text-teal-500" />
-            </div>
-          </Link>
-
+          {/* Aşama 1: Atama Bekleyen Yeni Arıza */}
           <Link
             href="/work-tracking/tickets"
             className="flex flex-col justify-between rounded-2xl border border-rose-300 bg-rose-50/70 p-4 transition hover:shadow-sm"
           >
             <div className="flex items-center justify-between">
-              <span className="text-sm font-extrabold text-slate-800">Açık Talep Sayısı</span>
+              <span className="text-sm font-extrabold text-slate-800">
+                1. Atama Bekleyen Arıza
+              </span>
               {urgentOpenCount > 0 && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white">
                   <AlertTriangle className="h-3 w-3" />
@@ -300,11 +368,71 @@ export default function WorkTrackingOverviewPage() {
                 </span>
               )}
             </div>
-            <div className="mt-4 flex items-end justify-between">
+            <div className="mt-1 text-[11px] text-slate-500">
+              Henüz iş emri atanmamış yeni kayıtlar
+            </div>
+            <div className="mt-3 flex items-end justify-between">
               <span className="text-2xl font-black text-rose-600">
-                {loading ? '...' : totalOpen}
+                {loading ? '...' : unassignedCount}
               </span>
               <FileText className="h-6 w-6 text-rose-500" />
+            </div>
+          </Link>
+
+          {/* Aşama 2: Sahada Aktif İş Emirleri */}
+          <Link
+            href="/work-tracking/work-orders"
+            className="flex flex-col justify-between rounded-2xl border border-blue-300 bg-blue-50/70 p-4 transition hover:shadow-sm"
+          >
+            <div className="text-sm font-extrabold text-slate-800">
+              2. Sahada Aktif İş Emirleri
+            </div>
+            <div className="mt-1 text-[11px] text-slate-500">
+              Teknisyene atanmış, işlemde veya bekleyen
+            </div>
+            <div className="mt-3 flex items-end justify-between">
+              <span className="text-2xl font-black text-blue-600">
+                {loading ? '...' : activeWoCount}
+              </span>
+              <Briefcase className="h-6 w-6 text-blue-500" />
+            </div>
+          </Link>
+
+          {/* Aşama 3: Çözüm Onay / Kontrol */}
+          <Link
+            href="/work-tracking/review"
+            className="flex flex-col justify-between rounded-2xl border border-lime-300 bg-lime-50/70 p-4 transition hover:shadow-sm"
+          >
+            <div className="text-sm font-extrabold text-slate-800">
+              3. Çözüm Onay / Kontrol
+            </div>
+            <div className="mt-1 text-[11px] text-slate-500">
+              Teknisyen tamamladı, yönetici onayı bekliyor
+            </div>
+            <div className="mt-3 flex items-end justify-between">
+              <span className="text-2xl font-black text-lime-700">
+                {loading ? '...' : awaitingApprovalCount}
+              </span>
+              <ClipboardCheck className="h-6 w-6 text-lime-600" />
+            </div>
+          </Link>
+
+          {/* Aşama 4: Kapanan / Arşivlenen */}
+          <Link
+            href="/work-tracking/tickets"
+            className="flex flex-col justify-between rounded-2xl border border-teal-300 bg-teal-50/70 p-4 transition hover:shadow-sm"
+          >
+            <div className="text-sm font-extrabold text-slate-800">
+              4. Kapanan / Tamamlanan
+            </div>
+            <div className="mt-1 text-[11px] text-slate-500">
+              Onaylanarak kalıcı kapatılan işler
+            </div>
+            <div className="mt-3 flex items-end justify-between">
+              <span className="text-2xl font-black text-teal-600">
+                {loading ? '...' : closedTotal}
+              </span>
+              <CheckCircle2 className="h-6 w-6 text-teal-500" />
             </div>
           </Link>
         </div>
@@ -324,9 +452,7 @@ export default function WorkTrackingOverviewPage() {
               <button
                 key={d.toISOString()}
                 type="button"
-                onClick={() =>
-                  setSelectedDay(isSelected ? null : d)
-                }
+                onClick={() => setSelectedDay(isSelected ? null : d)}
                 className={`flex min-w-[54px] flex-col items-center rounded-xl border px-3 py-1.5 text-center transition ${
                   isSelected
                     ? 'border-navy bg-navy text-white shadow-sm'
@@ -364,12 +490,12 @@ export default function WorkTrackingOverviewPage() {
           </div>
           <div className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-1.5">
             <Layers className="h-3.5 w-3.5 text-navy" />
-            Üzerimdeki Açık İş: <span className="text-navy">{totalOpen}</span>
+            Bana Atanan İş Emri: <span className="text-navy">{myAssignedCount}</span>
           </div>
         </div>
       </div>
 
-      {/* 3. SON HİZMET TALEPLERİ / ARIZA KARTLARI (Senyonet Kart Görünümü) */}
+      {/* 3. SON HİZMET TALEPLERİ / ARIZA KARTLARI */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-extrabold uppercase tracking-wider text-navy">

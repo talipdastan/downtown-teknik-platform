@@ -104,10 +104,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
 
   void _refreshAll() {
     final id = widget.ticketId;
-    ref.invalidate(ticketDetailProvider(id));
-    ref.invalidate(ticketHistoryProvider(id));
-    ref.invalidate(ticketCommentsProvider(id));
-    ref.invalidate(ticketAttachmentsProvider(id));
+    invalidateAllWorkTrackingProviders(ref, id);
   }
 
   @override

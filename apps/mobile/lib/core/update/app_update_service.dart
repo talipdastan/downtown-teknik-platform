@@ -47,14 +47,14 @@ class AppUpdateInfo {
 class AppUpdateService {
   AppUpdateService._();
 
-  /// Mevcut derlenmiş APK sürümü (`pubspec.yaml` ile senkron: `1.2.0+3`).
+  /// Mevcut derlenmiş APK sürümü (`pubspec.yaml` ile senkron: `1.2.1+4`).
   static const String currentVersion = String.fromEnvironment(
     'APP_VERSION',
-    defaultValue: '1.2.0',
+    defaultValue: '1.2.1',
   );
   static const int currentBuildNumber = int.fromEnvironment(
     'APP_BUILD_NUMBER',
-    defaultValue: 3,
+    defaultValue: 4,
   );
 
   /// Canlı Ubuntu Web Sunucusu güncelleme adresi.

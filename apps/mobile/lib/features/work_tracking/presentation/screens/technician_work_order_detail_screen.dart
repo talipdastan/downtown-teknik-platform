@@ -41,10 +41,7 @@ class _TechnicianWorkOrderDetailScreenState
   }
 
   void _refresh() {
-    ref.invalidate(workOrderViewProvider(_id));
-    ref.invalidate(workOrderMaterialsProvider(_id));
-    ref.invalidate(workOrderAttachmentsProvider(_id));
-    ref.invalidate(myWorkOrdersProvider);
+    invalidateAllWorkTrackingProviders(ref, _id);
   }
 
   /// Sunucu işlemi başarısız olursa durum DEĞİŞTİRİLMEZ; hata kullanıcıya gösterilir.

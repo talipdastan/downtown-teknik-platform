@@ -141,6 +141,26 @@ export default function WorkTrackingReviewPage() {
 
   useEffect(() => {
     loadPending();
+    const supabase = createClient();
+    const channel = supabase
+      .channel('wt-review-live')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'work_orders' },
+        () => loadPending()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'tickets' },
+        () => loadPending()
+      )
+      .subscribe();
+    const onFocus = () => loadPending();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      supabase.removeChannel(channel);
+    };
   }, [loadPending]);
 
   async function handleApprove(item: ReviewItem) {

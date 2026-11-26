@@ -1,13 +1,12 @@
 {
-  "version": "1.2.0",
-  "buildNumber": 3,
-  "releaseDate": "2026-11-26T12:35:00+03:00",
+  "version": "1.2.1",
+  "buildNumber": 4,
+  "releaseDate": "2026-11-26T13:02:00+03:00",
   "apkUrl": "http://10.16.19.19/download/downtown-teknik.apk",
   "mandatory": false,
   "releaseNotes": [
-    "Senyonet tarzı Koyu Lacivert Hero İş Yükü Özeti ve Haftalık Takvim eklendi.",
-    "2x2 Bento Operasyon kutuları ve Aktif/Kapanan sekmeli yeni arıza kartları eklendi.",
-    "Dar ve yakınlaştırılmış Android ekranlar için otomatik ölçekleme ve sabit alt buton düzeltmesi yapıldı.",
-    "Uygulama içi otomatik sürüm kontrolü ve tek tuşla APK güncelleme sistemi eklendi."
+    "İş emri atanan arıza kayıtları artık 'Atama Bekleyen' listesinden otomatik düşüp 'İş Emrinde / Sahada' sekmesine taşınıyor.",
+    "Üst koyu kart kişisel iş yükünü, 4'lü operasyon kutuları ise 4 ayrı saha aşamasını (Atama Bekleyen, Sahada, Onay Bekleyen, Kapanan) tekrarsız gösteriyor.",
+    "Supabase Realtime ve otomatik sağlayıcı yenileme ile programı kapatıp açmadan veriler anında güncelleniyor."
   ]
 }

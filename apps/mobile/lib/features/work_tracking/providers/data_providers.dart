@@ -181,11 +181,31 @@ final pendingAssignmentTicketsProvider =
   final data = await Api.client
       .from('tickets')
       .select(_ticketSelect)
-      .inFilter('status', ['new', 'under_review', 'assigned'])
+      .inFilter('status', ['new', 'under_review'])
       .order('created_at', ascending: false)
       .limit(200);
   return _rows(data).map((r) => TicketModel.fromJson(r)).toList();
 });
+
+/// İş Takip modülündeki herhangi bir ekranda işlem yapıldığında (arıza açma,
+/// iş emri atama, işe başlama, bekletme, tamamlama, onay/iade) tüm ilgili
+/// listeleri ve sayaçları tek seferde anında yeniler.
+void invalidateAllWorkTrackingProviders(WidgetRef ref, [String? entityId]) {
+  ref.invalidate(ticketsProvider);
+  ref.invalidate(myWorkOrdersProvider);
+  ref.invalidate(pendingAssignmentTicketsProvider);
+  ref.invalidate(pendingReviewTicketsProvider);
+  ref.invalidate(activeManagerWorkOrdersProvider);
+  if (entityId != null) {
+    ref.invalidate(ticketDetailProvider(entityId));
+    ref.invalidate(ticketHistoryProvider(entityId));
+    ref.invalidate(ticketCommentsProvider(entityId));
+    ref.invalidate(ticketAttachmentsProvider(entityId));
+    ref.invalidate(workOrderViewProvider(entityId));
+    ref.invalidate(workOrderMaterialsProvider(entityId));
+    ref.invalidate(workOrderAttachmentsProvider(entityId));
+  }
+}
 
 final pendingReviewTicketsProvider =
     FutureProvider.autoDispose<List<TicketModel>>((ref) async {
