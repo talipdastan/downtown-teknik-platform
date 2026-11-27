@@ -375,22 +375,61 @@ export default function WorkTrackingWorkOrdersPage() {
     setMsg(null);
     try {
       const supabase = createClient();
-      const { data, error } = await supabase.rpc('rpc_purge_expired_closed_photos', {
-        p_retention_days: 15,
-      });
-      if (error) throw error;
-      const count = typeof data === 'number' ? data : 0;
+      let totalPurged = 0;
+
+      // 100'lü gruplar halinde resmi Storage API üzerinden güvenli temizlik
+      for (let round = 0; round < 10; round++) {
+        const { data, error } = await supabase.rpc(
+          'rpc_manager_list_expired_closed_attachments',
+          {
+            p_retention_days: 15,
+            p_batch_limit: 100,
+          }
+        );
+        if (error) throw error;
+
+        const rows =
+          (data as Array<{ attachment_id: string; file_path: string }> | null) ?? [];
+        if (rows.length === 0) break;
+
+        const paths = rows
+          .map((r) => (r.file_path || '').trim())
+          .filter(Boolean);
+        if (paths.length > 0) {
+          const { error: remErr } = await supabase.storage
+            .from('work-attachments')
+            .remove(paths);
+          if (remErr) throw remErr;
+        }
+
+        const ids = rows.map((r) => r.attachment_id);
+        const { data: delCount, error: delErr } = await supabase.rpc(
+          'rpc_manager_confirm_purged_attachments',
+          { p_attachment_ids: ids }
+        );
+        if (delErr) throw delErr;
+        totalPurged += typeof delCount === 'number' ? delCount : rows.length;
+
+        if (rows.length < 100) break;
+      }
+
       setMsg({
         type: 'ok',
         text:
-          count > 0
-            ? `Kapanmasının üzerinden 15 gün geçmiş işlere ait ${count} adet fotoğraf veritabanı ve depolama alanından temizlendi.`
+          totalPurged > 0
+            ? `Kapanmasının üzerinden 15 gün geçmiş işlere ait ${totalPurged} adet fotoğraf resmi Storage API ile depolama ve veritabanından temizlendi.`
             : 'Depolama temiz: Kapanmasının üzerinden 15 gün geçmiş silinecek fotoğraf bulunmuyor.',
       });
     } catch (err) {
+      const errText =
+        err instanceof Error
+          ? err.message
+          : typeof err === 'object' && err !== null && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : 'Fotoğraf temizliği çalıştırılamadı.';
       setMsg({
         type: 'err',
-        text: err instanceof Error ? err.message : 'Fotoğraf temizliği çalıştırılamadı.',
+        text: errText,
       });
     } finally {
       setPurgingPhotos(false);
