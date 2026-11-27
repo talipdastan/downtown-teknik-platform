@@ -78,7 +78,7 @@ jobs:
           flutter test
 
       - name: Shorebird OTA Patch (Optional)
-        if: ${{ inputs.shorebird_patch == true && secrets.SHOREBIRD_TOKEN != '' }}
+        if: ${{ inputs.shorebird_patch == true }}
         shell: bash
         env:
           SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
@@ -86,6 +86,10 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           UPDATE_SERVER_URL: ${{ secrets.UPDATE_SERVER_URL || 'http://10.16.19.19' }}
         run: |
+          if [ -z "$SHOREBIRD_TOKEN" ]; then
+            echo "::warning::SHOREBIRD_TOKEN tanimli degil; Shorebird OTA yamasi atlandi."
+            exit 0
+          fi
           curl --proto '=https' --tlsv1.2 https://raw.githubusercontent.com/shorebirdtech/install/main/install.sh -sSf | bash
           echo "$HOME/.shorebird/bin" >> $GITHUB_PATH
           "$HOME/.shorebird/bin/shorebird" patch android \

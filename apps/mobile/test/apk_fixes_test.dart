@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'package:avm_tech_platform/core/auth/auth_provider.dart';
+import 'package:avm_tech_platform/core/database/pagination.dart';
 import 'package:avm_tech_platform/core/modules/module_registry.dart';
 import 'package:avm_tech_platform/core/notifications/notification_providers.dart';
 import 'package:avm_tech_platform/core/permissions/permission_models.dart';
@@ -1237,6 +1238,16 @@ void main() {
           profile: admin,
           extraOverrides: [
             ticketsProvider.overrideWith((_) async => const <TicketModel>[]),
+            paginatedTicketsProvider(
+              const TicketPageFilter(limit: 30, offset: 0),
+            ).overrideWith(
+              (_) async => const PaginatedResult<TicketModel>(
+                items: <TicketModel>[],
+                totalCount: 0,
+                limit: 30,
+                offset: 0,
+              ),
+            ),
           ],
           child: MaterialApp(
             theme: AppTheme.lightTheme,
