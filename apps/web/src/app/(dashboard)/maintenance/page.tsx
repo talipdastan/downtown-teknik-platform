@@ -52,6 +52,49 @@ const FREQ_LABELS: Record<PlanRow['frequency'], string> = {
   yearly: 'Yıllık',
 };
 
+const MAINTENANCE_TEMPLATES: Array<{
+  label: string;
+  title: string;
+  frequency: PlanRow['frequency'];
+  checklist: string;
+}> = [
+  {
+    label: 'Chiller Günlük',
+    title: 'Chiller Grubu Günlük İşletme Kontrolü',
+    frequency: 'daily',
+    checklist:
+      'Gidiş/dönüş su sıcaklıkları normal aralıkta (7-12 °C)\nKompresör yağ seviyesi ve basınç değerleri uygun\nFan motorlarında anormal ses/titreşim yok\nKaçak, yoğuşma veya alarm kodu yok',
+  },
+  {
+    label: 'Jeneratör Haftalık',
+    title: 'Jeneratör Haftalık Yüksüz Test & Kontrol',
+    frequency: 'weekly',
+    checklist:
+      'Yakıt seviyesi %75 üzerinde\nAkü voltajı ve şarj redresörü normal\nMotor yağı ve soğutma suyu seviyesi uygun\nBlok ısıtıcı aktif ve 10 dk test çalışması sorunsuz',
+  },
+  {
+    label: 'Yangın Pompası',
+    title: 'Yangın Pompa Dairesi Haftalık Kontrol',
+    frequency: 'weekly',
+    checklist:
+      'Jokey, elektrikli ve dizel pompa panoları OTOMATİK modda\nHat basıncı nominal değerde (8-10 bar)\nSu deposu seviyesi %100 dolu\nVanalar açık ve mühürlü, kaçak yok',
+  },
+  {
+    label: 'Kazan Dairesi',
+    title: 'Kazan Dairesi Günlük Basınç & Sıcaklık Kontrolü',
+    frequency: 'daily',
+    checklist:
+      'Kazan su basıncı ve genleşme tankı değeri normal\nBrülör yanma ve baca sıcaklığı uygun\nGaz dedektörü ve solenoid vana aktif\nSirkülasyon pompaları sessiz ve sızıntısız',
+  },
+  {
+    label: 'Trafo / OG Aylık',
+    title: 'Trafo & OG Hücre Aylık Görsel / Termal Kontrol',
+    frequency: 'monthly',
+    checklist:
+      'Trafo sargı sıcaklığı ve ortam havalandırması normal\nKompanzasyon panosu endüktif/kapasitif oranları sınır içi\nTopraklama baraları ve izolatörlerde ark/ısınma izi yok\nİzole halı, eldiven ve yangın tüpü eksiksiz',
+  },
+];
+
 export default function MaintenancePage() {
   const { profile } = useDashboardAuth();
   const canManage =
@@ -383,6 +426,27 @@ export default function MaintenancePage() {
               <button type="button" onClick={() => setShowNew(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100">
                 <X className="h-4 w-4" />
               </button>
+            </div>
+            <div>
+              <div className="mb-1.5 text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
+                Hazır AVM Bakım Şablonları (Tek Tıkla Doldur)
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {MAINTENANCE_TEMPLATES.map((tpl) => (
+                  <button
+                    key={tpl.label}
+                    type="button"
+                    onClick={() => {
+                      setTitle(tpl.title);
+                      setFrequency(tpl.frequency);
+                      setChecklistText(tpl.checklist);
+                    }}
+                    className="rounded-lg border border-navy/20 bg-navy-soft/60 px-2.5 py-1 text-[11px] font-bold text-navy hover:bg-navy-soft"
+                  >
+                    {tpl.label}
+                  </button>
+                ))}
+              </div>
             </div>
             <input
               required

@@ -43,6 +43,7 @@ import {
   EQUIPMENT_TYPES,
   printEquipmentQrLabels,
 } from '@/features/equipments/qr-print';
+import { EquipmentBulkImportModal } from '@/features/equipments/components/EquipmentBulkImportModal';
 
 type EquipmentRow = Equipment & {
   departments?: { name: string } | null;
@@ -120,6 +121,7 @@ export default function AdminEquipmentsPage() {
 
   // Ekle / Düzenle Modalı
   const [formModal, setFormModal] = useState<EquipmentFormState | null>(null);
+  const [showBulkImport, setShowBulkImport] = useState(false);
 
   // Ekipman 360° Modalı
   const [detailEq, setDetailEq] = useState<EquipmentRow | null>(null);
@@ -500,14 +502,24 @@ export default function AdminEquipmentsPage() {
 
         <div className="flex flex-wrap items-center gap-2">
           {canManage && (
-            <button
-              type="button"
-              onClick={openNewModal}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-navy px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-navy-hover"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Yeni Ekipman Ekle
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={openNewModal}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-navy px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-navy-hover"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Yeni Ekipman Ekle
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowBulkImport(true)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-xs font-bold text-indigo-900 hover:bg-indigo-100"
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5 text-indigo-700" />
+                Toplu İçe Aktar (Excel/CSV)
+              </button>
+            </>
           )}
           <button
             type="button"
@@ -1116,6 +1128,20 @@ export default function AdminEquipmentsPage() {
           </div>
         </div>
       )}
+
+      <EquipmentBulkImportModal
+        open={showBulkImport}
+        departments={departments}
+        currentUserId={currentProfile?.id}
+        onClose={() => setShowBulkImport(false)}
+        onImported={(cnt) => {
+          setMsg({
+            type: 'ok',
+            text: `${cnt} adet ekipman başarıyla içe aktarıldı; QR etiket basımına hazır.`,
+          });
+          loadAll();
+        }}
+      />
     </div>
   );
 }

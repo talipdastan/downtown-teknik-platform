@@ -1,0 +1,54 @@
+name: Weekly PostgreSQL Database Backup
+
+on:
+  schedule:
+    # Her Pazar 04:00 (TR / 01:00 UTC)
+    - cron: "0 1 * * 0"
+  workflow_dispatch:
+
+jobs:
+  backup:
+    name: Dump & Archive Supabase PostgreSQL
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check DATABASE_URL secret
+        id: check_secret
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::warning::DATABASE_URL secret tanimli degil; haftalik yedekleme atlandi."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install PostgreSQL client
+        if: steps.check_secret.outputs.configured == 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client
+
+      - name: Run pg_dump (public schema)
+        if: steps.check_secret.outputs.configured == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          STAMP=$(date -u +"%Y%m%d_%H%M%S")
+          mkdir -p backups
+          pg_dump "$DATABASE_URL" \
+            --schema=public \
+            --no-owner \
+            --no-privileges \
+            --format=plain \
+            | gzip -9 > "backups/downtown_teknik_${STAMP}.sql.gz"
+          ls -lh backups/
+
+      - name: Upload compressed backup artifact (30 days retention)
+        if: steps.check_secret.outputs.configured == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: downtown-teknik-db-backup-${{ github.run_number }}
+          path: backups/*.sql.gz
+          retention-days: 30

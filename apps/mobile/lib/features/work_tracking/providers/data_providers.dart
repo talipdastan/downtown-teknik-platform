@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:avm_tech_platform/core/database/local_lookup_cache.dart';
 import 'package:avm_tech_platform/core/database/pagination.dart';
 import 'package:avm_tech_platform/core/network/api_client.dart';
 import 'package:avm_tech_platform/features/work_tracking/data/models/extra_models.dart';
@@ -18,32 +19,50 @@ const String _workOrderSelect =
 // ---------- Açılır liste verileri (gerçek tablolar) ----------
 
 final floorsProvider = FutureProvider.autoDispose<List<LookupItem>>((ref) async {
-  final data = await Api.client
-      .from('floors')
-      .select('id, name')
-      .eq('is_active', true)
-      .order('sort_order');
-  return _rows(data).map((r) => LookupItem.fromJson(r)).toList();
+  final rows = await LocalLookupCache.instance.readThrough(
+    key: 'floors',
+    fetchRemote: () async {
+      final data = await Api.client
+          .from('floors')
+          .select('id, name')
+          .eq('is_active', true)
+          .order('sort_order');
+      return _rows(data);
+    },
+  );
+  return rows.map((r) => LookupItem.fromJson(r)).toList();
 });
 
 final locationsByFloorProvider =
     FutureProvider.autoDispose.family<List<LookupItem>, String>((ref, floorId) async {
-  final data = await Api.client
-      .from('locations')
-      .select('id, name, floor_id')
-      .eq('is_active', true)
-      .eq('floor_id', floorId)
-      .order('name');
-  return _rows(data).map((r) => LookupItem.fromJson(r, parentKey: 'floor_id')).toList();
+  final rows = await LocalLookupCache.instance.readThrough(
+    key: 'locations_$floorId',
+    fetchRemote: () async {
+      final data = await Api.client
+          .from('locations')
+          .select('id, name, floor_id')
+          .eq('is_active', true)
+          .eq('floor_id', floorId)
+          .order('name');
+      return _rows(data);
+    },
+  );
+  return rows.map((r) => LookupItem.fromJson(r, parentKey: 'floor_id')).toList();
 });
 
 final categoriesProvider = FutureProvider.autoDispose<List<LookupItem>>((ref) async {
-  final data = await Api.client
-      .from('categories')
-      .select('id, name')
-      .eq('is_active', true)
-      .order('name');
-  return _rows(data).map((r) => LookupItem.fromJson(r)).toList();
+  final rows = await LocalLookupCache.instance.readThrough(
+    key: 'categories',
+    fetchRemote: () async {
+      final data = await Api.client
+          .from('categories')
+          .select('id, name')
+          .eq('is_active', true)
+          .order('name');
+      return _rows(data);
+    },
+  );
+  return rows.map((r) => LookupItem.fromJson(r)).toList();
 });
 
 // ---------- Arızalar ----------

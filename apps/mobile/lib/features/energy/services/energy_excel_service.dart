@@ -16,6 +16,9 @@ import 'package:avm_tech_platform/features/energy/data/models/invoice_model.dart
 import 'package:avm_tech_platform/features/energy/data/models/meter_model.dart';
 import 'package:avm_tech_platform/features/energy/data/models/reading_model.dart';
 
+/// Büyük Excel dosyalarını ana UI iş parçacığını dondurmadan arka plan Isolate'ında kodlar.
+List<int>? _encodeExcelInIsolate(Excel excel) => excel.save();
+
 /// Enerji Fatura & Bütçe Raporu Sihirbazı Seçenekleri
 class EnergyReportExportConfig {
   final String preset; // 'executive' | 'budget_matrix' | 'accounting' | 'technical_penalty'
@@ -468,7 +471,7 @@ class EnergyExcelService {
         rowIdx++;
       }
 
-      final fileBytes = excel.save();
+      final fileBytes = await compute(_encodeExcelInIsolate, excel);
       if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
       if (context.mounted && fileBytes != null) {
         await shareOrDownloadExcel(
@@ -587,7 +590,7 @@ class EnergyExcelService {
         }
       }
 
-      final fileBytes = excel.save();
+      final fileBytes = await compute(_encodeExcelInIsolate, excel);
       if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
       if (context.mounted && fileBytes != null) {
         await shareOrDownloadExcel(
@@ -655,7 +658,7 @@ class EnergyExcelService {
           .replaceAll(RegExp(r'[^a-zA-Z0-9çğıöşüÇĞİÖŞÜ_\- ]'), '_')
           .trim();
       final baseName = safeName.isEmpty ? 'Sayac' : safeName;
-      final fileBytes = excel.save();
+      final fileBytes = await compute(_encodeExcelInIsolate, excel);
       if (fileBytes != null) {
         await shareOrDownloadExcel(
           bytes: fileBytes,

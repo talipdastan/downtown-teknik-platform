@@ -164,7 +164,7 @@ export default function EnergyOverviewPage() {
       const since = new Date();
       since.setDate(since.getDate() - 30);
 
-      const [sumRes, recRes, healthRes] = await Promise.all([
+      const [sumRes, recRes, healthRes, anomRes] = await Promise.all([
         supabase.rpc('rpc_energy_dashboard_summary', {
           p_year: year,
           p_month: month,
@@ -180,6 +180,7 @@ export default function EnergyOverviewPage() {
           p_year: year,
           p_month: month,
         }),
+        supabase.rpc('rpc_get_energy_anomalies', { p_threshold_pct: 35 }),
       ]);
       if (sumRes.error) throw sumRes.error;
       const healthAll =
@@ -191,11 +192,24 @@ export default function EnergyOverviewPage() {
               has_reading_this_month: boolean;
             }>)
           : [];
+      const anomalies =
+        !anomRes.error && Array.isArray(anomRes.data)
+          ? (anomRes.data as Array<{
+              meter_id: string;
+              meter_name: string;
+              meter_type: string;
+              latest_date: string;
+              latest_consumption: number;
+              avg_consumption: number;
+              deviation_pct: number;
+            }>)
+          : [];
       return {
         items: (sumRes.data as DashboardItem[]) ?? [],
         recentReadings: (recRes.data as unknown as RecentReadingRow[]) ?? [],
         totalHealthMeters: healthAll.length,
         unreadMeters: healthAll.filter((x) => !x.has_reading_this_month),
+        anomalies,
       };
     },
   });
@@ -208,6 +222,10 @@ export default function EnergyOverviewPage() {
   const totalHealthMeters = summaryQuery.data?.totalHealthMeters ?? 0;
   const unreadMeters = useMemo(
     () => summaryQuery.data?.unreadMeters ?? [],
+    [summaryQuery.data]
+  );
+  const anomalies = useMemo(
+    () => summaryQuery.data?.anomalies ?? [],
     [summaryQuery.data]
   );
   const loading = summaryQuery.isLoading;
@@ -556,6 +574,41 @@ export default function EnergyOverviewPage() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {anomalies.length > 0 && (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50/70 p-4 shadow-sm">
+          <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-rose-900">
+            <AlertTriangle className="h-4 w-4 text-rose-600" />
+            Tüketim Anomali Uyarıları (Son Okumada &ge;%35 Sapma · {anomalies.length} Sayaç)
+          </div>
+          <div className="mt-2.5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {anomalies.slice(0, 6).map((a) => (
+              <div
+                key={a.meter_id}
+                className="flex items-center justify-between rounded-xl border border-rose-200/80 bg-white px-3 py-2 text-xs"
+              >
+                <div className="min-w-0 pr-2">
+                  <div className="truncate font-bold text-slate-900">{a.meter_name}</div>
+                  <div className="text-[11px] text-slate-500">
+                    Son: {Number(a.latest_consumption).toLocaleString('tr-TR')} · Ort:{' '}
+                    {Number(a.avg_consumption).toLocaleString('tr-TR')}
+                  </div>
+                </div>
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 font-extrabold ${
+                    a.deviation_pct > 0
+                      ? 'bg-rose-100 text-rose-800'
+                      : 'bg-sky-100 text-sky-800'
+                  }`}
+                >
+                  {a.deviation_pct > 0 ? '+' : ''}
+                  {a.deviation_pct}%
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:avm_tech_platform/core/database/local_lookup_cache.dart';
 import 'package:avm_tech_platform/core/database/pagination.dart';
 import 'package:avm_tech_platform/core/network/api_client.dart';
 import 'package:avm_tech_platform/features/energy/data/models/budget_model.dart';
@@ -21,18 +22,24 @@ final energyDashboardProvider = FutureProvider.autoDispose
 
 final metersProvider =
     FutureProvider.autoDispose.family<List<MeterModel>, String?>((ref, meterType) async {
-  var q = Api.client
-      .from('meters')
-      .select('*, equipments(code, name)')
-      .eq('is_active', true)
-      .isFilter('deleted_at', null);
-  if (meterType != null) {
-    q = q.eq('meter_type', meterType);
-  }
-  final data = await q.order('sort_order').order('name');
-  return (data as List)
-      .map((e) => MeterModel.fromJson(Map<String, dynamic>.from(e as Map)))
-      .toList();
+  final rows = await LocalLookupCache.instance.readThrough(
+    key: 'meters_${meterType ?? 'all'}',
+    fetchRemote: () async {
+      var q = Api.client
+          .from('meters')
+          .select('*, equipments(code, name)')
+          .eq('is_active', true)
+          .isFilter('deleted_at', null);
+      if (meterType != null) {
+        q = q.eq('meter_type', meterType);
+      }
+      final data = await q.order('sort_order').order('name');
+      return (data as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+    },
+  );
+  return rows.map((e) => MeterModel.fromJson(e)).toList();
 });
 
 final trashedMetersProvider =

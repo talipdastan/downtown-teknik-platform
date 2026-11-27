@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Droplets,
   FileDown,
@@ -16,7 +17,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { createClient } from '@/core/supabase/client';
-import { EQUIPMENT_SELECT } from '@/core/supabase/selects';
+import { EQUIPMENT_SELECT, METER_SELECT } from '@/core/supabase/selects';
 import { formatDateTime } from '@/core/constants';
 import { useDashboardAuth } from '@/core/DashboardContext';
 import { hasModulePermission } from '@/core/permissions';
@@ -60,10 +61,7 @@ export default function EnergyMetersPage() {
   const canManage = hasModulePermission(profile, 'energy', 'manage');
   const canReports = hasModulePermission(profile, 'energy', 'reports');
 
-  const [meters, setMeters] = useState<MeterWithEq[]>([]);
-  const [trashedMeters, setTrashedMeters] = useState<TrashedMeter[]>([]);
-  const [equipments, setEquipments] = useState<Equipment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
@@ -75,14 +73,14 @@ export default function EnergyMetersPage() {
   // Modal state (Add / Edit)
   const [formModal, setFormModal] = useState<MeterFormState | null>(null);
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
-    try {
+  const { data: metersData, isLoading: loading } = useQuery({
+    queryKey: ['energy', 'meters', isAdmin],
+    queryFn: async () => {
       const supabase = createClient();
       const [mRes, eqRes, trashRes] = await Promise.all([
         supabase
           .from('meters')
-          .select('*, equipments(code, name)')
+          .select(`${METER_SELECT}, equipments(code, name)`)
           .eq('is_active', true)
           .is('deleted_at', null)
           .order('meter_type')
@@ -92,20 +90,22 @@ export default function EnergyMetersPage() {
         isAdmin ? supabase.rpc('rpc_list_trashed_meters') : Promise.resolve({ data: [], error: null }),
       ]);
       if (mRes.error) throw mRes.error;
-      setMeters((mRes.data as unknown as MeterWithEq[]) ?? []);
-      if (eqRes.data) setEquipments(eqRes.data as Equipment[]);
       if (trashRes.error) throw trashRes.error;
-      setTrashedMeters((trashRes.data as unknown as TrashedMeter[]) ?? []);
-    } catch (err) {
-      setMsg({ type: 'err', text: err instanceof Error ? err.message : 'Sayaçlar yüklenemedi.' });
-    } finally {
-      setLoading(false);
-    }
-  }, [isAdmin]);
+      return {
+        meters: (mRes.data as unknown as MeterWithEq[]) ?? [],
+        equipments: (eqRes.data as Equipment[]) ?? [],
+        trashedMeters: (trashRes.data as unknown as TrashedMeter[]) ?? [],
+      };
+    },
+  });
 
-  useEffect(() => {
-    loadAll();
-  }, [loadAll]);
+  const meters = useMemo(() => metersData?.meters ?? [], [metersData]);
+  const equipments = useMemo(() => metersData?.equipments ?? [], [metersData]);
+  const trashedMeters = useMemo(() => metersData?.trashedMeters ?? [], [metersData]);
+
+  const loadAll = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['energy', 'meters'] });
+  };
 
   const filteredMeters = useMemo(() => {
     const q = search.trim().toLowerCase();

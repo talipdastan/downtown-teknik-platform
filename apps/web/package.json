@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "node --test tests/permissions_and_modules.test.mjs tests/energy_readings.test.mjs tests/work_order_and_ticket_helpers.test.mjs tests/budget_and_cmms_helpers.test.mjs"
+    "test": "node --test tests/permissions_and_modules.test.mjs tests/energy_readings.test.mjs tests/work_order_and_ticket_helpers.test.mjs tests/budget_and_cmms_helpers.test.mjs tests/selects_schema_guard.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

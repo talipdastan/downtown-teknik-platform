@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   BarChart3,
   FileDown,
@@ -137,15 +138,15 @@ function buildDeptChartSvg(
 export default function WorkTrackingReportsPage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [rawTickets, setRawTickets] = useState<RawReportTicket[]>([]);
-  const [totalMatchedCount, setTotalMatchedCount] = useState<number | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const loadReport = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
+  const {
+    data: reportData,
+    isLoading: loading,
+    error: queryError,
+  } = useQuery({
+    queryKey: ['wt', 'reports', { startDate, endDate }],
+    placeholderData: (prev) => prev,
+    queryFn: async () => {
       const supabase = createClient();
       const CHUNK_SIZE = 1000;
       const MAX_ROWS = 5000;
@@ -175,18 +176,37 @@ export default function WorkTrackingReportsPage() {
         if (batch.length < CHUNK_SIZE) break;
       }
 
-      setRawTickets(collected);
-      setTotalMatchedCount(exactTotal ?? collected.length);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Rapor verisi alınamadı.');
-    } finally {
-      setLoading(false);
-    }
-  }, [startDate, endDate]);
+      const mttrRes = await supabase.rpc('rpc_get_work_tracking_mttr_stats', { p_days: 90 });
+      const mttr =
+        !mttrRes.error && mttrRes.data
+          ? (mttrRes.data as {
+              period_days: number;
+              closed_count: number;
+              mttr_minutes: number;
+              sla_total: number;
+              sla_breached: number;
+              sla_compliance_pct: number;
+              top_equipments: Array<{
+                equipment_id: string;
+                equipment_code: string;
+                equipment_name: string;
+                ticket_count: number;
+              }>;
+            })
+          : null;
 
-  useEffect(() => {
-    loadReport();
-  }, [loadReport]);
+      return {
+        rawTickets: collected,
+        totalMatchedCount: exactTotal ?? collected.length,
+        mttr,
+      };
+    },
+  });
+
+  const rawTickets = useMemo(() => reportData?.rawTickets ?? [], [reportData]);
+  const totalMatchedCount = reportData?.totalMatchedCount ?? null;
+  const mttrStats = reportData?.mttr ?? null;
+  const error = queryError instanceof Error ? queryError.message : null;
 
   function applyPreset(preset: 'this_month' | 'last_month' | 'last_30' | 'this_year' | 'clear') {
     const now = new Date();
@@ -465,6 +485,57 @@ export default function WorkTrackingReportsPage() {
           </button>
         </div>
       </div>
+
+      {/* Kurumsal MTTR · SLA Uyum · Tekrarlayan Ekipman Özeti (Son 90 Gün) */}
+      {mttrStats && (
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
+              Ortalama Çözüm Süresi (MTTR · 90 Gün)
+            </div>
+            <div className="mt-1 text-2xl font-extrabold text-navy">
+              {formatDuration(Math.round(mttrStats.mttr_minutes || 0))}
+            </div>
+            <div className="mt-0.5 text-xs text-slate-500">
+              {mttrStats.closed_count} çözülen / kapanan kayıt üzerinden
+            </div>
+          </div>
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
+            <div className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-800">
+              SLA Uyum Oranı (90 Gün)
+            </div>
+            <div className="mt-1 text-2xl font-extrabold text-emerald-700">
+              %{mttrStats.sla_compliance_pct}
+            </div>
+            <div className="mt-0.5 text-xs text-emerald-900/70">
+              {mttrStats.sla_breached} ihlal / {mttrStats.sla_total} toplam talep
+            </div>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
+              En Sık Arızalanan Ekipmanlar
+            </div>
+            {mttrStats.top_equipments.length === 0 ? (
+              <div className="mt-2 text-xs text-slate-400">
+                Ekipmana bağlı arıza kaydı oluştuğunda burada listelenir.
+              </div>
+            ) : (
+              <div className="mt-1.5 space-y-1 text-xs">
+                {mttrStats.top_equipments.slice(0, 3).map((eq) => (
+                  <div key={eq.equipment_id} className="flex items-center justify-between">
+                    <span className="truncate font-bold text-slate-800">
+                      {eq.equipment_code} · {eq.equipment_name}
+                    </span>
+                    <span className="ml-2 rounded-full bg-rose-100 px-2 py-0.5 font-extrabold text-rose-800">
+                      {eq.ticket_count}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Tarih Filtresi ve Hızlı Kısayollar */}
       {totalMatchedCount !== null && totalMatchedCount > rawTickets.length && (
