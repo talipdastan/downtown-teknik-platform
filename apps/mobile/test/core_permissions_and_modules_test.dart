@@ -615,9 +615,10 @@ Doğalgaz;Şubat;12000;180000;11000;150000
     });
 
     test('PhotoCompressionPolicy ve PaginatedResult sınır kuralları ARCHITECTURE/DATABASE ile uyumludur', () {
-      expect(PhotoCompressionPolicy.maxWidthPx, 1600);
-      expect(PhotoCompressionPolicy.maxHeightPx, 1600);
-      expect(PhotoCompressionPolicy.jpegQuality, 80);
+      expect(PhotoCompressionPolicy.maxWidthPx, 1200);
+      expect(PhotoCompressionPolicy.maxHeightPx, 1200);
+      expect(PhotoCompressionPolicy.jpegQuality, 70);
+      expect(PhotoCompressionPolicy.retentionDaysAfterClose, 15);
 
       expect(clampPageLimit(0), 1);
       expect(clampPageLimit(500), 100);

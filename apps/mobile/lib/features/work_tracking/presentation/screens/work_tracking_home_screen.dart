@@ -98,6 +98,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void dispose() {
     _realtimeDebounce?.cancel();
+    OfflineSyncService.instance.stopAutoSync();
     final ch = _realtimeChannel;
     if (ch != null) {
       try {

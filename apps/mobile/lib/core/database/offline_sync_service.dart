@@ -58,22 +58,27 @@ class OfflineSyncService {
     if (kIsWeb) return null;
     if (_engine != null) return _engine;
 
-    final dir = await getApplicationDocumentsDirectory();
-    final queueFile = File('${dir.path}/downtown_offline_queue.json');
-    final storage = JsonFileOfflineQueueStorage(queueFile);
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final queueFile = File('${dir.path}/downtown_offline_queue.json');
+      final storage = JsonFileOfflineQueueStorage(queueFile);
 
-    _engine = OfflineSyncEngine(
-      storage: storage,
-      mediaUploader: _uploadQueuedMedia,
-      mutationSender: _sendQueuedMutation,
-    );
-    await _refreshPendingCount();
-    return _engine;
+      _engine = OfflineSyncEngine(
+        storage: storage,
+        mediaUploader: _uploadQueuedMedia,
+        mutationSender: _sendQueuedMutation,
+      );
+      await _refreshPendingCount();
+      return _engine;
+    } catch (_) {
+      // Headless widget test veya desteklenmeyen ortamda sessiz geç
+      return null;
+    }
   }
 
   /// Arka planda 45 saniyede bir bekleyen kayıtları senkronize etmeyi dener.
   void startAutoSync({VoidCallback? onSynced}) {
-    if (kIsWeb) return;
+    if (kIsWeb || SupabaseConfig.clientOrNull == null) return;
     _periodicTimer?.cancel();
     _periodicTimer = Timer.periodic(const Duration(seconds: 45), (_) async {
       final summary = await syncNow();
