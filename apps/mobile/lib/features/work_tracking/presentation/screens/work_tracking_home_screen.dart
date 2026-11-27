@@ -339,45 +339,53 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        _HeroCircleMetric(
-                          count: unassignedCount,
-                          label: 'Atama Bekleyen',
-                          countColor: AppColors.statusNew,
-                          onTap: canViewTickets
-                              ? () => context.push(
-                                    '/work-tracking/tickets?tab=active&status=new',
-                                  )
-                              : null,
+                        Expanded(
+                          child: _HeroCircleMetric(
+                            count: unassignedCount,
+                            label: 'Atama Bekleyen',
+                            countColor: AppColors.statusNew,
+                            onTap: canViewTickets
+                                ? () => context.push(
+                                      '/work-tracking/tickets?tab=active&status=new',
+                                    )
+                                : null,
+                          ),
                         ),
-                        _HeroCircleMetric(
-                          count: inFieldCount,
-                          label: 'Sahada / İşlemde',
-                          countColor: AppColors.priorityHigh,
-                          onTap: canViewTickets
-                              ? () => context.push(
-                                    '/work-tracking/tickets?tab=active',
-                                  )
-                              : null,
+                        Expanded(
+                          child: _HeroCircleMetric(
+                            count: inFieldCount,
+                            label: 'Sahada / İşlemde',
+                            countColor: AppColors.priorityHigh,
+                            onTap: canViewTickets
+                                ? () => context.push(
+                                      '/work-tracking/tickets?tab=active',
+                                    )
+                                : null,
+                          ),
                         ),
-                        _HeroCircleMetric(
-                          count: awaitingApprovalCount,
-                          label: 'Onay Bekleyen',
-                          countColor: AppColors.statusResolved,
-                          onTap: canViewTickets
-                              ? () => context.push(
-                                    '/work-tracking/tickets?tab=active&status=resolved',
-                                  )
-                              : null,
+                        Expanded(
+                          child: _HeroCircleMetric(
+                            count: awaitingApprovalCount,
+                            label: 'Onay Bekleyen',
+                            countColor: AppColors.statusResolved,
+                            onTap: canViewTickets
+                                ? () => context.push(
+                                      '/work-tracking/tickets?tab=active&status=resolved',
+                                    )
+                                : null,
+                          ),
                         ),
-                        _HeroCircleMetric(
-                          count: closedCount,
-                          label: 'Kapandı',
-                          countColor: AppColors.primaryNavy,
-                          onTap: canViewTickets
-                              ? () => context.push(
-                                    '/work-tracking/tickets?tab=closed',
-                                  )
-                              : null,
+                        Expanded(
+                          child: _HeroCircleMetric(
+                            count: closedCount,
+                            label: 'Kapandı',
+                            countColor: AppColors.primaryNavy,
+                            onTap: canViewTickets
+                                ? () => context.push(
+                                      '/work-tracking/tickets?tab=closed',
+                                    )
+                                : null,
+                          ),
                         ),
                       ],
                     ),
@@ -559,52 +567,50 @@ class _HeroCircleMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                ),
-                alignment: Alignment.center,
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: Text(
-                      '$count',
-                      style: TextStyle(
-                        color: countColor,
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w900,
-                      ),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Text(
+                    '$count',
+                    style: TextStyle(
+                      color: countColor,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 5),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
