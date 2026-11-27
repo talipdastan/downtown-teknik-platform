@@ -40,4 +40,4 @@ export const ENERGY_BUDGET_SELECT =
   'id, period_year, period_month, utility_type, budget_consumption, budget_tl, prev_year_consumption, prev_year_tl';
 
 export const METER_READING_SELECT =
-  'id, meter_id, reading_date, active_value, inductive_value, capacitive_value, index_value, consumption, inductive_percent, capacitive_percent, notes, recorded_by, created_at';
+  'id, meter_id, reading_date, active_value, inductive_value, capacitive_value, index_value, consumption, inductive_percent, capacitive_percent, entered_by_name, notes, created_at';

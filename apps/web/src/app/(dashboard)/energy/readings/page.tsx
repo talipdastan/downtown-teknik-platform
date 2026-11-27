@@ -84,7 +84,11 @@ export default function EnergyReadingsPage() {
     },
   });
 
-  const { data: rows = [], isLoading: loading } = useQuery({
+  const {
+    data: rows = [],
+    isLoading: loading,
+    error: readingsError,
+  } = useQuery({
     queryKey: ['energy', 'readings', { typeFilter, meterFilter, dateFrom, dateTo, page }],
     placeholderData: (prev) => prev,
     queryFn: async () => {
@@ -389,6 +393,12 @@ export default function EnergyReadingsPage() {
           </div>
         )}
       </div>
+
+      {readingsError && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {readingsError instanceof Error ? readingsError.message : 'Okuma geçmişi alınamadı.'}
+        </div>
+      )}
 
       {msg && (
         <div
