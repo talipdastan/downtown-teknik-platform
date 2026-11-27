@@ -20,8 +20,14 @@ class SupabaseConfig {
     );
   }
 
-  static SupabaseClient? get clientOrNull =>
-      isConfigured ? Supabase.instance.client : null;
+  static SupabaseClient? get clientOrNull {
+    if (!isConfigured) return null;
+    try {
+      return Supabase.instance.client;
+    } catch (_) {
+      return null;
+    }
+  }
 
   /// Yapılandırma varsa istemciyi döndürür (çağıran önce [isConfigured] kontrol etmelidir).
   static SupabaseClient get client => Supabase.instance.client;
