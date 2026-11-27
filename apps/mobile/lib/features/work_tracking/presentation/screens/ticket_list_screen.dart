@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:avm_tech_platform/core/database/pagination.dart';
 import 'package:avm_tech_platform/features/work_tracking/presentation/widgets/work_tracking_widgets.dart';
 import 'package:avm_tech_platform/features/work_tracking/work_tracking_access.dart';
 import 'package:avm_tech_platform/core/theme/app_theme.dart';
@@ -40,9 +43,12 @@ class TicketListScreen extends ConsumerStatefulWidget {
 }
 
 class _TicketListScreenState extends ConsumerState<TicketListScreen> {
+  static const int _pageSize = 30;
   String? _status;
   String? _priority;
   String _query = '';
+  int _pageIndex = 0;
+  Timer? _searchDebounce;
   // 'active' = Tüm Aktif İşler (Atama Bekleyen + Sahada İşlemde + Çözüm Onayı Bekleyen)
   // 'closed' = Yalnızca Onaylanıp Kapananlar (closed / cancelled)
   bool _showActiveTab = true;
@@ -60,12 +66,31 @@ class _TicketListScreenState extends ConsumerState<TicketListScreen> {
     }
   }
 
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    super.dispose();
+  }
+
   bool _isClosedTicket(TicketModel t) =>
       t.status == 'closed' || t.status == 'cancelled';
 
+  TicketPageFilter _buildPageFilter() {
+    final effectiveStatus = _status ?? (!_showActiveTab ? 'closed' : null);
+    final trimmed = _query.trim();
+    return TicketPageFilter(
+      status: effectiveStatus,
+      priority: _priority,
+      search: trimmed.isEmpty ? null : trimmed,
+      limit: _pageSize,
+      offset: _pageIndex * _pageSize,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final asyncValue = ref.watch(ticketsProvider);
+    final pageFilter = _buildPageFilter();
+    final asyncValue = ref.watch(paginatedTicketsProvider(pageFilter));
     final canCreate =
         ref.watch(authProvider).profile?.hasActionAccess('ticket_create') ??
             false;
@@ -122,7 +147,17 @@ class _TicketListScreenState extends ConsumerState<TicketListScreen> {
                   hintText: 'Arıza no, kategori, mahal veya açıklama ara...',
                   prefixIcon: Icon(Icons.search),
                 ),
-                onChanged: (v) => setState(() => _query = v),
+                onChanged: (v) {
+                  _searchDebounce?.cancel();
+                  _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+                    if (mounted) {
+                      setState(() {
+                        _query = v;
+                        _pageIndex = 0;
+                      });
+                    }
+                  });
+                },
               ),
             ),
 
@@ -144,6 +179,7 @@ class _TicketListScreenState extends ConsumerState<TicketListScreen> {
                         selected: _showActiveTab,
                         onTap: () => setState(() {
                           _showActiveTab = true;
+                          _pageIndex = 0;
                           if (_status == 'closed' || _status == 'cancelled') {
                             _status = null;
                           }
@@ -156,6 +192,7 @@ class _TicketListScreenState extends ConsumerState<TicketListScreen> {
                         selected: !_showActiveTab,
                         onTap: () => setState(() {
                           _showActiveTab = false;
+                          _pageIndex = 0;
                           if (_status != null &&
                               _status != 'closed' &&
                               _status != 'cancelled') {
@@ -200,6 +237,7 @@ class _TicketListScreenState extends ConsumerState<TicketListScreen> {
                       ],
                       onChanged: (v) => setState(() {
                         _status = v;
+                        _pageIndex = 0;
                         if (v == 'closed' || v == 'cancelled') {
                           _showActiveTab = false;
                         } else if (v != null) {
@@ -233,19 +271,23 @@ class _TicketListScreenState extends ConsumerState<TicketListScreen> {
                             ),
                           ),
                       ],
-                      onChanged: (v) => setState(() => _priority = v),
+                      onChanged: (v) => setState(() {
+                        _priority = v;
+                        _pageIndex = 0;
+                      }),
                     ),
                   ),
                 ],
               ),
             ),
 
-            // 4) Yapılandırılmış Hizmet Talebi Kart Listesi
+            // 4) Sunucu Taraflı Sayfalamalı Hizmet Talebi Kart Listesi (`rpc_list_tickets_paginated`)
             Expanded(
-              child: AsyncValueView<List<TicketModel>>(
+              child: AsyncValueView<PaginatedResult<TicketModel>>(
                 value: asyncValue,
                 onRetry: () => invalidateAllWorkTrackingProviders(ref),
-                data: (tickets) {
+                data: (pageData) {
+                  final tickets = pageData.items;
                   final tabScoped = _status != null
                       ? tickets
                       : tickets
@@ -259,29 +301,79 @@ class _TicketListScreenState extends ConsumerState<TicketListScreen> {
                     priority: _priority,
                     query: _query,
                   );
-                  return RefreshIndicator(
-                    onRefresh: () => ref.refresh(ticketsProvider.future),
-                    child: filtered.isEmpty
-                        ? ListView(
+                  final totalPages =
+                      ((pageData.totalCount + _pageSize - 1) ~/ _pageSize)
+                          .clamp(1, 9999);
+                  final hasNext =
+                      (pageData.offset + pageData.items.length) < pageData.totalCount;
+
+                  return Column(
+                    children: [
+                      Expanded(
+                        child: RefreshIndicator(
+                          onRefresh: () => ref
+                              .refresh(paginatedTicketsProvider(pageFilter).future),
+                          child: filtered.isEmpty
+                              ? ListView(
+                                  children: [
+                                    const SizedBox(height: 80),
+                                    Center(
+                                      child: Text(
+                                        pageData.totalCount == 0
+                                            ? 'Henüz arıza kaydı yok.'
+                                            : 'Bu sayfada / filtrede kayıt bulunamadı.',
+                                        style: const TextStyle(
+                                            color: AppColors.textSecondary),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : ListView.builder(
+                                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+                                  itemCount: filtered.length,
+                                  itemBuilder: (context, i) =>
+                                      _TicketCard(ticket: filtered[i]),
+                                ),
+                        ),
+                      ),
+                      if (pageData.totalCount > _pageSize || _pageIndex > 0)
+                        Container(
+                          padding: const EdgeInsets.fromLTRB(12, 6, 12, 76),
+                          decoration: const BoxDecoration(
+                            color: AppColors.white,
+                            border: Border(
+                              top: BorderSide(color: AppColors.border),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const SizedBox(height: 80),
-                              Center(
-                                child: Text(
-                                  tickets.isEmpty
-                                      ? 'Henüz arıza kaydı yok.'
-                                      : 'Filtreye uyan kayıt bulunamadı.',
-                                  style: const TextStyle(
-                                      color: AppColors.textSecondary),
+                              OutlinedButton.icon(
+                                onPressed: _pageIndex > 0
+                                    ? () => setState(() => _pageIndex--)
+                                    : null,
+                                icon: const Icon(Icons.chevron_left, size: 18),
+                                label: const Text('Önceki'),
+                              ),
+                              Text(
+                                'Sayfa ${_pageIndex + 1}/$totalPages · ${pageData.totalCount} kayıt',
+                                style: const TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.textSecondary,
                                 ),
                               ),
+                              OutlinedButton.icon(
+                                onPressed: hasNext
+                                    ? () => setState(() => _pageIndex++)
+                                    : null,
+                                icon: const Icon(Icons.chevron_right, size: 18),
+                                label: const Text('Sonraki'),
+                              ),
                             ],
-                          )
-                        : ListView.builder(
-                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 88),
-                            itemCount: filtered.length,
-                            itemBuilder: (context, i) =>
-                                _TicketCard(ticket: filtered[i]),
                           ),
+                        ),
+                    ],
                   );
                 },
               ),

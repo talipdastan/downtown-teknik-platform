@@ -18,6 +18,11 @@ import {
   X,
 } from 'lucide-react';
 import { createClient } from '@/core/supabase/client';
+import {
+  CUSTOM_ROLE_SELECT,
+  DEPARTMENT_SELECT,
+  PROFILE_SELECT,
+} from '@/core/supabase/selects';
 import { useDashboardAuth } from '@/core/DashboardContext';
 import {
   defaultModulePermission,
@@ -41,94 +46,19 @@ import {
   UserPermissionsJson,
   UserRole,
 } from '@/types/database';
-
-type UserRow = Profile & {
-  departments?: { name: string } | null;
-};
-
-type CustomRole = {
-  id: string;
-  name: string;
-  base_role: UserRole;
-};
-
-const ALL_ROLES: UserRole[] = [
-  'employee',
-  'technician',
-  'team_lead',
-  'technical_manager',
-  'system_admin',
-];
-
-const APPROVAL_LABELS: Record<ApprovalStatus, string> = {
-  approved: 'Onaylı',
-  pending: 'Onay Bekliyor',
-  rejected: 'Reddedildi',
-  disabled: 'Pasif',
-};
-
-const CORE_ACTION_DEFS: { key: CoreActionKey; label: string; desc: string }[] = [
-  {
-    key: 'manage_users',
-    label: 'Personel Onay & Yönetimi',
-    desc: 'Bekleyen kayıtları onaylar, yeni personel ekler ve bilgileri düzenler.',
-  },
-  {
-    key: 'manage_definitions',
-    label: 'Kat / Mahal / Kategori Yönetimi',
-    desc: 'Departman, kat, mahal ve arıza kategorilerini tanımlar.',
-  },
-  {
-    key: 'manage_equipments',
-    label: 'Ortak Ekipman Envanteri',
-    desc: 'Teknik ekipman ekler, günceller ve modüller arası eşler.',
-  },
-  {
-    key: 'manage_modules',
-    label: 'Sistem Modül Yönetimi',
-    desc: 'Platform modüllerini açıp kapatma yetkisi (Sistem Yöneticisi).',
-  },
-];
-
-const EDITABLE_MODULES: { key: 'energy' | 'work_tracking'; label: string }[] = [
-  { key: 'energy', label: 'Enerji Takip Modülü' },
-  { key: 'work_tracking', label: 'İş Takip Modülü' },
-];
-
-const OTHER_VALUE = '__other__';
-const CUSTOM_PREFIX = 'custom:';
-
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return 'AT';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-}
-
-function buildModuleMapForRole(
-  role: UserRole,
-  existing?: UserPermissionsJson
-): Record<'energy' | 'work_tracking', Record<ModulePermissionKey, boolean>> {
-  const result = {} as Record<'energy' | 'work_tracking', Record<ModulePermissionKey, boolean>>;
-
-  for (const mod of EDITABLE_MODULES) {
-    const modPerms = {} as Record<ModulePermissionKey, boolean>;
-    const customMod: ModulePermissionSet | undefined = existing?.modules?.[mod.key];
-    for (const def of MODULE_PERMISSION_DEFS) {
-      if (role === 'system_admin') {
-        modPerms[def.key] = true;
-      } else if (customMod && customMod.enabled === false) {
-        modPerms[def.key] = false;
-      } else if (customMod && typeof customMod[def.key] === 'boolean') {
-        modPerms[def.key] = Boolean(customMod[def.key]);
-      } else {
-        modPerms[def.key] = defaultModulePermission(role, mod.key, def.key);
-      }
-    }
-    result[mod.key] = modPerms;
-  }
-  return result;
-}
+import {
+  ALL_ROLES,
+  APPROVAL_LABELS,
+  buildModuleMapForRole,
+  CORE_ACTION_DEFS,
+  CUSTOM_PREFIX,
+  CustomRole,
+  EDITABLE_MODULES,
+  EditableModuleKey,
+  getInitials,
+  OTHER_VALUE,
+  UserRow,
+} from '@/features/admin/user-helpers';
 
 export default function AdminUsersPage() {
   const { refreshProfile } = useDashboardAuth();
@@ -177,7 +107,7 @@ export default function AdminUsersPage() {
   // Merkezi Modül & İşlem Yetkileri Modalı
   const [permTarget, setPermTarget] = useState<UserRow | null>(null);
   const [permModules, setPermModules] = useState<
-    Record<'energy' | 'work_tracking', Record<ModulePermissionKey, boolean>>
+    Record<EditableModuleKey, Record<ModulePermissionKey, boolean>>
   >(() => buildModuleMapForRole('technician'));
   const [permCoreActions, setPermCoreActions] = useState<CoreActionKey[]>([]);
   const [permResetDefaults, setPermResetDefaults] = useState(false);
@@ -209,7 +139,7 @@ export default function AdminUsersPage() {
       if (user) {
         const { data: meData } = await supabase
           .from('profiles')
-          .select('*')
+          .select(PROFILE_SELECT)
           .eq('id', user.id)
           .single();
         me = (meData as Profile) ?? null;
@@ -223,10 +153,10 @@ export default function AdminUsersPage() {
           .order('created_at', { ascending: false }),
         supabase
           .from('departments')
-          .select('*')
+          .select(DEPARTMENT_SELECT)
           .eq('is_active', true)
           .order('name'),
-        supabase.from('custom_roles').select('*').order('name'),
+        supabase.from('custom_roles').select(CUSTOM_ROLE_SELECT).order('name'),
       ]);
 
       if (pRes.error) throw pRes.error;
@@ -586,7 +516,7 @@ export default function AdminUsersPage() {
     setPermResetDefaults(false);
   }
 
-  function toggleModulePerm(modKey: 'energy' | 'work_tracking', permKey: ModulePermissionKey) {
+  function toggleModulePerm(modKey: EditableModuleKey, permKey: ModulePermissionKey) {
     setPermResetDefaults(false);
     setPermModules((prev) => {
       const currentMod = { ...prev[modKey] };
@@ -603,7 +533,7 @@ export default function AdminUsersPage() {
     });
   }
 
-  function setAllModulePerms(modKey: 'energy' | 'work_tracking', enabled: boolean) {
+  function setAllModulePerms(modKey: EditableModuleKey, enabled: boolean) {
     setPermResetDefaults(false);
     setPermModules((prev) => {
       const nextMod = { ...prev[modKey] };

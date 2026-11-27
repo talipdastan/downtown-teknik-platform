@@ -13,6 +13,11 @@ import {
   X,
 } from 'lucide-react';
 import { createClient } from '@/core/supabase/client';
+import {
+  ENERGY_BUDGET_SELECT,
+  ENERGY_INVOICE_SELECT,
+  METER_SELECT,
+} from '@/core/supabase/selects';
 import { useDashboardAuth } from '@/core/DashboardContext';
 import { hasModulePermission } from '@/core/permissions';
 import {
@@ -143,12 +148,12 @@ export default function EnergyInvoicesPage() {
       const [invRes, mRes, bRes] = await Promise.all([
         supabase
           .from('energy_invoices')
-          .select('*')
+          .select(ENERGY_INVOICE_SELECT)
           .eq('period_year', year)
           .order('period_month', { ascending: false })
           .order('meter_name'),
-        supabase.from('meters').select('*').eq('is_active', true).order('name'),
-        supabase.from('energy_budgets').select('*').eq('period_year', year),
+        supabase.from('meters').select(METER_SELECT).eq('is_active', true).order('name'),
+        supabase.from('energy_budgets').select(ENERGY_BUDGET_SELECT).eq('period_year', year),
       ]);
       if (invRes.error) throw invRes.error;
       setInvoices((invRes.data as EnergyInvoice[]) ?? []);

@@ -341,7 +341,7 @@ class EnergyExcelService {
     if (meterIds.isEmpty) return {};
     final data = await Api.client
         .from('meter_readings')
-        .select()
+        .select('id, meter_id, reading_date, active_value, inductive_value, capacitive_value, inductive_percent, capacitive_percent, index_value, consumption, entered_by_id, entered_by_name, notes, created_at')
         .inFilter('meter_id', meterIds)
         .order('reading_date', ascending: true)
         .limit(5000);

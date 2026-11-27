@@ -13,6 +13,13 @@ import {
   X,
 } from 'lucide-react';
 import { createClient } from '@/core/supabase/client';
+import {
+  CATEGORY_SELECT,
+  DEPARTMENT_SELECT,
+  FLOOR_SELECT,
+  LOCATION_SELECT,
+  PROFILE_SELECT,
+} from '@/core/supabase/selects';
 import { hasCoreAction } from '@/core/permissions';
 import { Category, Department, Floor, Location, Profile } from '@/types/database';
 
@@ -79,17 +86,17 @@ export default function AdminDefinitionsPage() {
       if (user) {
         const { data: prof } = await supabase
           .from('profiles')
-          .select('*')
+          .select(PROFILE_SELECT)
           .eq('id', user.id)
           .single();
         if (prof) setCurrentProfile(prof as Profile);
       }
 
       const [dRes, fRes, lRes, cRes] = await Promise.all([
-        supabase.from('departments').select('*').order('name'),
-        supabase.from('floors').select('*').order('sort_order').order('name'),
-        supabase.from('locations').select('*').order('name'),
-        supabase.from('categories').select('*').order('name'),
+        supabase.from('departments').select(DEPARTMENT_SELECT).order('name'),
+        supabase.from('floors').select(FLOOR_SELECT).order('sort_order').order('name'),
+        supabase.from('locations').select(LOCATION_SELECT).order('name'),
+        supabase.from('categories').select(CATEGORY_SELECT).order('name'),
       ]);
 
       if (dRes.error) throw dRes.error;

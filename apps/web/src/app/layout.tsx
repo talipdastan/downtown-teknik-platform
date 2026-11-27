@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { PwaRegistrar } from '@/components/PwaRegistrar';
+import { AppProviders } from './providers';
 
 export const metadata: Metadata = {
   title: 'Downtown Teknik – Teknik Operasyon Yönetim Platformu',
@@ -32,8 +33,10 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/downtown-teknik-icon.png" />
       </head>
       <body className="min-h-screen antialiased">
-        <PwaRegistrar />
-        {children}
+        <AppProviders>
+          <PwaRegistrar />
+          {children}
+        </AppProviders>
       </body>
     </html>
   );

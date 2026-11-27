@@ -1,7 +1,7 @@
 {
-  "version": "1.3.0",
-  "buildNumber": 8,
-  "releaseDate": "2026-11-27T14:10:00+03:00",
+  "version": "1.3.1",
+  "buildNumber": 9,
+  "releaseDate": "2026-11-27T15:55:00+03:00",
   "apkUrl": "https://github.com/talipdastan/downtown-teknik-platform/releases/latest/download/downtown-teknik.apk",
   "apkUrls": {
     "arm64-v8a": "https://github.com/talipdastan/downtown-teknik-platform/releases/latest/download/downtown-teknik-arm64-v8a.apk",
@@ -10,8 +10,8 @@
   },
   "mandatory": false,
   "releaseNotes": [
-    "Faz 1: Kalıcı kurumsal imza, ~21 MB hafif ABI-split APK, çevrimdışı (offline) saha kuyruğu ve güvenli 15 günlük fotoğraf temizliği.",
-    "Faz 2: SLA zaman takibi, reaktif ceza aşımında otomatik Acil İş İsteği, teknisyen iş yükü rozetleri, mükerrer arıza uyarısı ve Ekipman QR Karnesi.",
-    "Faz 3: Planlı Bakım & Günlük Checklist, Yedek Parça & Stok Yönetimi, Dijital Vardiya Devir Defteri ve Dış Servis / Sözleşme Takibi modülleri."
+    "Mobil Arıza Listesi sunucu taraflı sayfalamaya (rpc_list_tickets_paginated) geçirildi; 300 kayıt sınırı kaldırıldı.",
+    "Web ve Mobil genelindeki tüm 34 adet select('*') sorgusu sütun bazlı daraltılarak veri trafiği optimize edildi.",
+    "Web paneline TanStack Query önbellek katmanı eklendi; büyük sayfalar modüler alt dosyalara ayrıştırıldı."
   ]
 }

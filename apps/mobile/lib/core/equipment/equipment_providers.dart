@@ -8,7 +8,7 @@ final equipmentOptionsProvider =
     FutureProvider.autoDispose<List<EquipmentModel>>((ref) async {
   final data = await Api.client
       .from('equipments')
-      .select()
+      .select('id, code, name, equipment_type, department_id, location_id, brand, model, serial_number, warranty_end_date, status, is_active, created_at')
       .eq('is_active', true)
       .order('name')
       .limit(500);

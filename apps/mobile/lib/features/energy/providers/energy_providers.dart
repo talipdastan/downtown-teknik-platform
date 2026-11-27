@@ -58,7 +58,7 @@ final meterReadingsProvider =
     FutureProvider.autoDispose.family<List<MeterReadingModel>, String>((ref, meterId) async {
   final data = await Api.client
       .from('meter_readings')
-      .select()
+      .select('id, meter_id, reading_date, active_value, inductive_value, capacitive_value, inductive_percent, capacitive_percent, index_value, consumption, entered_by_id, entered_by_name, notes, created_at')
       .eq('meter_id', meterId)
       .order('reading_date', ascending: false)
       .limit(200);
@@ -71,7 +71,7 @@ final energyInvoicesProvider =
     FutureProvider.autoDispose.family<List<EnergyInvoiceModel>, int>((ref, year) async {
   final data = await Api.client
       .from('energy_invoices')
-      .select()
+      .select('id, period_year, period_month, utility_type, provider, invoice_no, invoice_date, invoice_type, meter_id, meter_name, meter_no, contract_no, eic_code, tekil_code, subscriber_no, consumption, amount_tl, inductive_penalty_tl, capacitive_penalty_tl, tenant_consumption, tenant_amount_tl, pdf_storage_path, notes, entered_by_name, created_at')
       .eq('period_year', year)
       .order('period_month', ascending: false)
       .order('meter_name');
@@ -84,7 +84,7 @@ final energyBudgetsProvider =
     FutureProvider.autoDispose.family<List<EnergyBudgetModel>, int>((ref, year) async {
   final data = await Api.client
       .from('energy_budgets')
-      .select()
+      .select('id, period_year, period_month, utility_type, budget_consumption, budget_tl, prev_year_consumption, prev_year_tl')
       .eq('period_year', year)
       .order('period_month');
   return (data as List)

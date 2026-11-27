@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   Droplets,
@@ -145,25 +146,20 @@ function buildTrendSvgMarkup(
 
 export default function EnergyOverviewPage() {
   const { profile } = useDashboardAuth();
+  const queryClient = useQueryClient();
   const canReports = hasModulePermission(profile, 'energy', 'reports');
   const canManage = hasModulePermission(profile, 'energy', 'manage');
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [items, setItems] = useState<DashboardItem[]>([]);
-  const [recentReadings, setRecentReadings] = useState<RecentReadingRow[]>([]);
-  const [unreadMeters, setUnreadMeters] = useState<Array<{ meter_id: string; meter_name: string; category: string }>>([]);
-  const [totalHealthMeters, setTotalHealthMeters] = useState(0);
   const [trendCat, setTrendCat] = useState<TrendCategory>('electric');
   const [hoveredDay, setHoveredDay] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [setupError, setSetupError] = useState<string | null>(null);
   const [settingUp, setSettingUp] = useState(false);
 
-  const loadSummary = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
+  const summaryQuery = useQuery({
+    queryKey: ['energy', 'overview', year, month],
+    queryFn: async () => {
       const supabase = createClient();
       const since = new Date();
       since.setDate(since.getDate() - 30);
@@ -186,40 +182,49 @@ export default function EnergyOverviewPage() {
         }),
       ]);
       if (sumRes.error) throw sumRes.error;
-      setItems((sumRes.data as DashboardItem[]) ?? []);
-      if (recRes.data) {
-        setRecentReadings(recRes.data as unknown as RecentReadingRow[]);
-      }
-      if (!healthRes.error && Array.isArray(healthRes.data)) {
-        const all = healthRes.data as Array<{
-          meter_id: string;
-          meter_name: string;
-          category: string;
-          has_reading_this_month: boolean;
-        }>;
-        setTotalHealthMeters(all.length);
-        setUnreadMeters(all.filter((x) => !x.has_reading_this_month));
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Enerji özeti yüklenemedi.');
-    } finally {
-      setLoading(false);
-    }
-  }, [year, month]);
+      const healthAll =
+        !healthRes.error && Array.isArray(healthRes.data)
+          ? (healthRes.data as Array<{
+              meter_id: string;
+              meter_name: string;
+              category: string;
+              has_reading_this_month: boolean;
+            }>)
+          : [];
+      return {
+        items: (sumRes.data as DashboardItem[]) ?? [],
+        recentReadings: (recRes.data as unknown as RecentReadingRow[]) ?? [],
+        totalHealthMeters: healthAll.length,
+        unreadMeters: healthAll.filter((x) => !x.has_reading_this_month),
+      };
+    },
+  });
 
-  useEffect(() => {
-    loadSummary();
-  }, [loadSummary]);
+  const items = useMemo(() => summaryQuery.data?.items ?? [], [summaryQuery.data]);
+  const recentReadings = useMemo(
+    () => summaryQuery.data?.recentReadings ?? [],
+    [summaryQuery.data]
+  );
+  const totalHealthMeters = summaryQuery.data?.totalHealthMeters ?? 0;
+  const unreadMeters = useMemo(
+    () => summaryQuery.data?.unreadMeters ?? [],
+    [summaryQuery.data]
+  );
+  const loading = summaryQuery.isLoading;
+  const error =
+    setupError ??
+    (summaryQuery.error instanceof Error ? summaryQuery.error.message : null);
 
   async function setupDefaults() {
     setSettingUp(true);
+    setSetupError(null);
     try {
       const supabase = createClient();
       const { error: rpcErr } = await supabase.rpc('rpc_setup_default_meters');
       if (rpcErr) throw rpcErr;
-      await loadSummary();
+      await queryClient.invalidateQueries({ queryKey: ['energy', 'overview'] });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sayaçlar kurulamadı.');
+      setSetupError(err instanceof Error ? err.message : 'Sayaçlar kurulamadı.');
     } finally {
       setSettingUp(false);
     }

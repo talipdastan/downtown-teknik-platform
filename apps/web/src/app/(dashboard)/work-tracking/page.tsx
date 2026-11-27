@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   Calendar,
@@ -58,22 +59,13 @@ function getCurrentWeekDays(): Date[] {
 
 export default function WorkTrackingOverviewPage() {
   const { profile, serverModules } = useDashboardAuth();
-  const [recent, setRecent] = useState<RecentTicket[]>([]);
-  const [unassignedCount, setUnassignedCount] = useState<number>(0);
-  const [inFieldCount, setInFieldCount] = useState<number>(0);
-  const [awaitingApprovalCount, setAwaitingApprovalCount] = useState<number>(0);
-  const [closedTotal, setClosedTotal] = useState<number>(0);
-  const [urgentOpenCount, setUrgentOpenCount] = useState<number>(0);
+  const queryClient = useQueryClient();
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const loadOverview = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    setError(null);
-    try {
+  const overviewQuery = useQuery({
+    queryKey: ['work-tracking', 'overview'],
+    queryFn: async () => {
       const supabase = createClient();
-
       const [recRes, summaryRes] = await Promise.all([
         supabase
           .from('tickets')
@@ -86,67 +78,77 @@ export default function WorkTrackingOverviewPage() {
       ]);
 
       if (recRes.error) throw recRes.error;
-      setRecent((recRes.data as unknown as RecentTicket[]) ?? []);
+      const recentList = (recRes.data as unknown as RecentTicket[]) ?? [];
 
       const summaryRow = Array.isArray(summaryRes.data)
         ? (summaryRes.data[0] as Record<string, number> | undefined)
         : (summaryRes.data as Record<string, number> | null);
 
       if (!summaryRes.error && summaryRow) {
-        setUnassignedCount(Number(summaryRow.unassigned_count ?? 0));
-        setInFieldCount(Number(summaryRow.in_field_count ?? 0));
-        setAwaitingApprovalCount(Number(summaryRow.awaiting_approval_count ?? 0));
-        setClosedTotal(Number(summaryRow.closed_count ?? 0));
-        setUrgentOpenCount(Number(summaryRow.urgent_open_count ?? 0));
-      } else {
-        // Migration 0018 henüz canlıya alınmadıysa geriye uyumlu fallback
-        const [unassignedRes, inFieldRes, resolvedRes, closedRes, urgentRes] =
-          await Promise.all([
-            supabase
-              .from('tickets')
-              .select('id', { count: 'exact', head: true })
-              .in('status', ['new', 'under_review']),
-            supabase
-              .from('tickets')
-              .select('id', { count: 'exact', head: true })
-              .in('status', ['assigned', 'in_progress', 'waiting']),
-            supabase
-              .from('tickets')
-              .select('id', { count: 'exact', head: true })
-              .eq('status', 'resolved'),
-            supabase
-              .from('tickets')
-              .select('id', { count: 'exact', head: true })
-              .eq('status', 'closed'),
-            supabase
-              .from('tickets')
-              .select('id', { count: 'exact', head: true })
-              .eq('priority', 'urgent')
-              .not('status', 'in', '("closed","cancelled")'),
-          ]);
-        setUnassignedCount(unassignedRes.count ?? 0);
-        setInFieldCount(inFieldRes.count ?? 0);
-        setAwaitingApprovalCount(resolvedRes.count ?? 0);
-        setClosedTotal(closedRes.count ?? 0);
-        setUrgentOpenCount(urgentRes.count ?? 0);
+        return {
+          recent: recentList,
+          unassignedCount: Number(summaryRow.unassigned_count ?? 0),
+          inFieldCount: Number(summaryRow.in_field_count ?? 0),
+          awaitingApprovalCount: Number(summaryRow.awaiting_approval_count ?? 0),
+          closedTotal: Number(summaryRow.closed_count ?? 0),
+          urgentOpenCount: Number(summaryRow.urgent_open_count ?? 0),
+        };
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Özet verileri yüklenemedi.');
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, []);
 
-  useEffect(() => {
-    loadOverview();
-  }, [loadOverview]);
+      const [unassignedRes, inFieldRes, resolvedRes, closedRes, urgentRes] =
+        await Promise.all([
+          supabase
+            .from('tickets')
+            .select('id', { count: 'exact', head: true })
+            .in('status', ['new', 'under_review']),
+          supabase
+            .from('tickets')
+            .select('id', { count: 'exact', head: true })
+            .in('status', ['assigned', 'in_progress', 'waiting']),
+          supabase
+            .from('tickets')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'resolved'),
+          supabase
+            .from('tickets')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'closed'),
+          supabase
+            .from('tickets')
+            .select('id', { count: 'exact', head: true })
+            .eq('priority', 'urgent')
+            .not('status', 'in', '("closed","cancelled")'),
+        ]);
+      return {
+        recent: recentList,
+        unassignedCount: unassignedRes.count ?? 0,
+        inFieldCount: inFieldRes.count ?? 0,
+        awaitingApprovalCount: resolvedRes.count ?? 0,
+        closedTotal: closedRes.count ?? 0,
+        urgentOpenCount: urgentRes.count ?? 0,
+      };
+    },
+  });
+
+  const loadOverview = () => {
+    queryClient.invalidateQueries({ queryKey: ['work-tracking', 'overview'] });
+  };
 
   useDebouncedRealtime({
     channelName: 'wt-overview-live',
     tables: ['tickets', 'work_orders'],
-    onRefresh: () => loadOverview(true),
+    onRefresh: loadOverview,
     delayMs: 500,
   });
+
+  const recent = useMemo(() => overviewQuery.data?.recent ?? [], [overviewQuery.data]);
+  const unassignedCount = overviewQuery.data?.unassignedCount ?? 0;
+  const inFieldCount = overviewQuery.data?.inFieldCount ?? 0;
+  const awaitingApprovalCount = overviewQuery.data?.awaitingApprovalCount ?? 0;
+  const closedTotal = overviewQuery.data?.closedTotal ?? 0;
+  const urgentOpenCount = overviewQuery.data?.urgentOpenCount ?? 0;
+  const loading = overviewQuery.isLoading;
+  const error = overviewQuery.error instanceof Error ? overviewQuery.error.message : null;
 
   const weekDays = useMemo(() => getCurrentWeekDays(), []);
   const today = useMemo(() => new Date(), []);

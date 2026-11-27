@@ -22,6 +22,11 @@ import {
   Zap,
 } from 'lucide-react';
 import { createClient } from '@/core/supabase/client';
+import {
+  NOTIFICATION_SELECT,
+  PROFILE_SELECT,
+  SYSTEM_MODULE_SELECT,
+} from '@/core/supabase/selects';
 import { formatDateTime } from '@/core/constants';
 import {
   AccessDeniedCard,
@@ -104,8 +109,8 @@ export default function DashboardLayout({
       } = await supabase.auth.getUser();
       if (!user) return;
       const [profRes, modRes] = await Promise.all([
-        supabase.from('profiles').select('*').eq('id', user.id).single(),
-        supabase.from('system_modules').select('*').order('sort_order').order('key'),
+        supabase.from('profiles').select(PROFILE_SELECT).eq('id', user.id).single(),
+        supabase.from('system_modules').select(SYSTEM_MODULE_SELECT).order('sort_order').order('key'),
       ]);
       if (profRes.data) setProfile(profRes.data as Profile);
       if (modRes.data) setServerModules(modRes.data as SystemModule[]);
@@ -142,11 +147,11 @@ export default function DashboardLayout({
         setUserId(user.id);
 
         const [profRes, modRes, notifRes] = await Promise.all([
-          supabase.from('profiles').select('*').eq('id', user.id).single(),
-          supabase.from('system_modules').select('*').order('sort_order').order('key'),
+          supabase.from('profiles').select(PROFILE_SELECT).eq('id', user.id).single(),
+          supabase.from('system_modules').select(SYSTEM_MODULE_SELECT).order('sort_order').order('key'),
           supabase
             .from('notifications')
-            .select('*')
+            .select(NOTIFICATION_SELECT)
             .eq('user_id', user.id)
             .order('created_at', { ascending: false })
             .limit(25),

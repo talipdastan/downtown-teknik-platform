@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Boxes, Cpu, Power, Sparkles, Wrench, Zap } from 'lucide-react';
 import { createClient } from '@/core/supabase/client';
+import { SYSTEM_MODULE_SELECT } from '@/core/supabase/selects';
 import { useDashboardAuth } from '@/core/DashboardContext';
 import { WEB_MODULES } from '@/core/moduleRegistry';
 import { hasCoreAction } from '@/core/permissions';
@@ -32,7 +33,7 @@ export default function AdminModulesPage() {
       const supabase = createClient();
       const { data, error } = await supabase
         .from('system_modules')
-        .select('*')
+        .select(SYSTEM_MODULE_SELECT)
         .order('sort_order')
         .order('key');
       if (error) throw error;

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { FileDown, FileSpreadsheet, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { createClient } from '@/core/supabase/client';
+import { METER_SELECT } from '@/core/supabase/selects';
 import { formatDate } from '@/core/constants';
 import { useDashboardAuth } from '@/core/DashboardContext';
 import { hasModulePermission } from '@/core/permissions';
@@ -87,7 +88,7 @@ export default function EnergyReadingsPage() {
       const [mRes, rRes] = await Promise.all([
         supabase
           .from('meters')
-          .select('*')
+          .select(METER_SELECT)
           .eq('is_active', true)
           .is('deleted_at', null)
           .order('name'),

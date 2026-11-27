@@ -88,7 +88,7 @@ final ticketAttachmentsProvider =
     FutureProvider.autoDispose.family<List<AttachmentModel>, String>((ref, id) async {
   final data = await Api.client
       .from('attachments')
-      .select()
+      .select('id, ticket_id, work_order_id, uploaded_by, file_path, file_name, mime_type, attachment_type, created_at')
       .eq('ticket_id', id)
       .order('created_at');
   return _rows(data).map((r) => AttachmentModel.fromJson(r)).toList();
@@ -118,7 +118,7 @@ final workOrderMaterialsProvider =
     FutureProvider.autoDispose.family<List<MaterialModel>, String>((ref, id) async {
   final data = await Api.client
       .from('work_order_materials')
-      .select()
+      .select('id, work_order_id, material_name, quantity, unit, note, recorded_by, created_at')
       .eq('work_order_id', id)
       .order('created_at');
   return _rows(data).map((r) => MaterialModel.fromJson(r)).toList();
@@ -128,7 +128,7 @@ final workOrderAttachmentsProvider =
     FutureProvider.autoDispose.family<List<AttachmentModel>, String>((ref, id) async {
   final data = await Api.client
       .from('attachments')
-      .select()
+      .select('id, ticket_id, work_order_id, uploaded_by, file_path, file_name, mime_type, attachment_type, created_at')
       .eq('work_order_id', id)
       .order('created_at');
   return _rows(data).map((r) => AttachmentModel.fromJson(r)).toList();
@@ -192,6 +192,7 @@ final pendingAssignmentTicketsProvider =
 /// listeleri ve sayaçları tek seferde anında yeniler.
 void invalidateAllWorkTrackingProviders(WidgetRef ref, [String? entityId]) {
   ref.invalidate(ticketsProvider);
+  ref.invalidate(paginatedTicketsProvider);
   ref.invalidate(myWorkOrdersProvider);
   ref.invalidate(pendingAssignmentTicketsProvider);
   ref.invalidate(pendingReviewTicketsProvider);

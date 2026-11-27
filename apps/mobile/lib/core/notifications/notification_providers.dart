@@ -6,7 +6,7 @@ final notificationsProvider =
     FutureProvider.autoDispose<List<AppNotification>>((ref) async {
   final data = await Api.client
       .from('notifications')
-      .select()
+      .select('id, user_id, module_key, entity_type, entity_id, title, message, is_read, created_at')
       .eq('user_id', Api.userId)
       .order('created_at', ascending: false)
       .limit(100);

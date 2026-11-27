@@ -16,6 +16,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { createClient } from '@/core/supabase/client';
+import { EQUIPMENT_SELECT } from '@/core/supabase/selects';
 import { formatDateTime } from '@/core/constants';
 import { useDashboardAuth } from '@/core/DashboardContext';
 import { hasModulePermission } from '@/core/permissions';
@@ -87,7 +88,7 @@ export default function EnergyMetersPage() {
           .order('meter_type')
           .order('sort_order')
           .order('name'),
-        supabase.from('equipments').select('*').eq('is_active', true).order('name').limit(300),
+        supabase.from('equipments').select(EQUIPMENT_SELECT).eq('is_active', true).order('name').limit(300),
         isAdmin ? supabase.rpc('rpc_list_trashed_meters') : Promise.resolve({ data: [], error: null }),
       ]);
       if (mRes.error) throw mRes.error;
