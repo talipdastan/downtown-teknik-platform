@@ -15,6 +15,8 @@ import {
   X,
 } from 'lucide-react';
 import { createClient } from '@/core/supabase/client';
+import { useDebouncedRealtime } from '@/core/hooks/useDebouncedRealtime';
+import { DuplicateTicketBanner } from '@/components/DuplicateTicketBanner';
 import { formatDateTime, PRIORITY_LABELS, TICKET_STATUS_LABELS } from '@/core/constants';
 import { useDashboardAuth } from '@/core/DashboardContext';
 import { hasModulePermission } from '@/core/permissions';
@@ -243,27 +245,14 @@ export default function WorkTrackingTicketsPage() {
 
   useEffect(() => {
     loadTickets();
-    const supabase = createClient();
-    const channel = supabase
-      .channel('wt-tickets-live')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'tickets' },
-        () => loadTickets()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'work_orders' },
-        () => loadTickets()
-      )
-      .subscribe();
-    const onFocus = () => loadTickets();
-    window.addEventListener('focus', onFocus);
-    return () => {
-      window.removeEventListener('focus', onFocus);
-      supabase.removeChannel(channel);
-    };
   }, [loadTickets]);
+
+  useDebouncedRealtime({
+    channelName: 'wt-tickets-live',
+    tables: ['tickets', 'work_orders'],
+    onRefresh: loadTickets,
+    delayMs: 500,
+  });
 
   async function openNewModal() {
     setShowNew(true);
@@ -1321,6 +1310,11 @@ export default function WorkTrackingTicketsPage() {
                 className="w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm"
               />
             )}
+
+            <DuplicateTicketBanner
+              locationId={locationId && locationId !== '__other__' ? locationId : null}
+              equipmentId={equipmentId || null}
+            />
 
             <div className="grid gap-3 sm:grid-cols-2">
               <select

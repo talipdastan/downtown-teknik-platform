@@ -4,7 +4,9 @@ import { useMemo } from 'react';
 import Link from 'next/link';
 import {
   ArrowRight,
+  BookOpen,
   CalendarClock,
+  FileSignature,
   Package,
   ShieldAlert,
   Users,
@@ -35,6 +37,24 @@ function getModuleVisual(key: string) {
       return {
         icon: CalendarClock,
         iconBg: 'bg-sky-50 text-sky-700',
+        btn: 'bg-navy hover:bg-navy-hover',
+      };
+    case 'inventory':
+      return {
+        icon: Package,
+        iconBg: 'bg-emerald-50 text-emerald-700',
+        btn: 'bg-navy hover:bg-navy-hover',
+      };
+    case 'shifts':
+      return {
+        icon: BookOpen,
+        iconBg: 'bg-amber-50 text-amber-800',
+        btn: 'bg-navy hover:bg-navy-hover',
+      };
+    case 'contracts':
+      return {
+        icon: FileSignature,
+        iconBg: 'bg-indigo-50 text-indigo-700',
         btn: 'bg-navy hover:bg-navy-hover',
       };
     default:

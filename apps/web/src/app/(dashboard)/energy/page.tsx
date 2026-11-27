@@ -152,6 +152,8 @@ export default function EnergyOverviewPage() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [items, setItems] = useState<DashboardItem[]>([]);
   const [recentReadings, setRecentReadings] = useState<RecentReadingRow[]>([]);
+  const [unreadMeters, setUnreadMeters] = useState<Array<{ meter_id: string; meter_name: string; category: string }>>([]);
+  const [totalHealthMeters, setTotalHealthMeters] = useState(0);
   const [trendCat, setTrendCat] = useState<TrendCategory>('electric');
   const [hoveredDay, setHoveredDay] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -166,7 +168,7 @@ export default function EnergyOverviewPage() {
       const since = new Date();
       since.setDate(since.getDate() - 30);
 
-      const [sumRes, recRes] = await Promise.all([
+      const [sumRes, recRes, healthRes] = await Promise.all([
         supabase.rpc('rpc_energy_dashboard_summary', {
           p_year: year,
           p_month: month,
@@ -178,11 +180,25 @@ export default function EnergyOverviewPage() {
           .gte('reading_date', since.toISOString())
           .order('reading_date', { ascending: true })
           .limit(1000),
+        supabase.rpc('rpc_get_energy_reading_health', {
+          p_year: year,
+          p_month: month,
+        }),
       ]);
       if (sumRes.error) throw sumRes.error;
       setItems((sumRes.data as DashboardItem[]) ?? []);
       if (recRes.data) {
         setRecentReadings(recRes.data as unknown as RecentReadingRow[]);
+      }
+      if (!healthRes.error && Array.isArray(healthRes.data)) {
+        const all = healthRes.data as Array<{
+          meter_id: string;
+          meter_name: string;
+          category: string;
+          has_reading_this_month: boolean;
+        }>;
+        setTotalHealthMeters(all.length);
+        setUnreadMeters(all.filter((x) => !x.has_reading_this_month));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Enerji özeti yüklenemedi.');
@@ -481,6 +497,59 @@ export default function EnergyOverviewPage() {
             >
               {settingUp ? 'Kuruluyor...' : 'Varsayılan Sayaçları Kur'}
             </button>
+          )}
+        </div>
+      )}
+
+      {/* Bu Ay Okunmayan Sayaçlar & Reaktif Otomasyon Özeti */}
+      {totalHealthMeters > 0 && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-xs font-extrabold uppercase tracking-wider text-navy">
+                {MONTHS[month - 1]} {year} Sayaç Okuma Tamamlanma Durumu
+              </div>
+              <div className="mt-0.5 text-xs text-slate-500">
+                {totalHealthMeters - unreadMeters.length} / {totalHealthMeters} sayaç okundu ·
+                Reaktif sınır aşımında (%20 End / %15 Kap) otomatik Acil İş İsteği aktif.
+              </div>
+            </div>
+            <Link
+              href="/energy/readings"
+              className="rounded-xl bg-navy-soft px-3 py-1.5 text-xs font-bold text-navy hover:bg-navy hover:text-white"
+            >
+              Okuma Girişine Git →
+            </Link>
+          </div>
+          <div className="mt-2.5 h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+            <div
+              className="h-full rounded-full bg-emerald-500 transition-all"
+              style={{
+                width: `${Math.round(
+                  ((totalHealthMeters - unreadMeters.length) / Math.max(1, totalHealthMeters)) * 100
+                )}%`,
+              }}
+            />
+          </div>
+          {unreadMeters.length > 0 && (
+            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] font-bold text-amber-800">
+                Bu ay okunmayanlar ({unreadMeters.length}):
+              </span>
+              {unreadMeters.slice(0, 10).map((m) => (
+                <span
+                  key={m.meter_id}
+                  className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-900"
+                >
+                  {m.meter_name}
+                </span>
+              ))}
+              {unreadMeters.length > 10 && (
+                <span className="text-[11px] font-bold text-slate-500">
+                  +{unreadMeters.length - 10} sayaç daha
+                </span>
+              )}
+            </div>
           )}
         </div>
       )}

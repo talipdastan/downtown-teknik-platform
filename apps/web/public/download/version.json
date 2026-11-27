@@ -1,12 +1,17 @@
 {
-  "version": "1.2.4",
-  "buildNumber": 7,
-  "releaseDate": "2026-11-26T15:18:00+03:00",
-  "apkUrl": "http://10.16.19.19/download/downtown-teknik.apk",
+  "version": "1.3.0",
+  "buildNumber": 8,
+  "releaseDate": "2026-11-27T14:10:00+03:00",
+  "apkUrl": "https://github.com/talipdastan/downtown-teknik-platform/releases/latest/download/downtown-teknik.apk",
+  "apkUrls": {
+    "arm64-v8a": "https://github.com/talipdastan/downtown-teknik-platform/releases/latest/download/downtown-teknik-arm64-v8a.apk",
+    "armeabi-v7a": "https://github.com/talipdastan/downtown-teknik-platform/releases/latest/download/downtown-teknik-armeabi-v7a.apk",
+    "universal": "https://github.com/talipdastan/downtown-teknik-platform/releases/latest/download/downtown-teknik.apk"
+  },
   "mandatory": false,
   "releaseNotes": [
-    "İş Emirleri ve Raporlar sayfasına İstek Açan, Açılış Tarihi, İsteği Tamamlayan, Tamamlanma Tarihi ve Çözüm Süresi sütunları eklendi.",
-    "İş Emirleri raporlaması için Başlangıç - Bitiş Tarihi seçici ve hızlı dönem filtreleri eklendi.",
-    "Samsung (HEIC/50MP+) ve tüm kamera fotoğrafları ~100 KB boyutuna (%97 tasarruf) sıkıştırılıyor; kapanan işlerin fotoğrafları 15 gün sonra otomatik siliniyor."
+    "Faz 1: Kalıcı kurumsal imza, ~21 MB hafif ABI-split APK, çevrimdışı (offline) saha kuyruğu ve güvenli 15 günlük fotoğraf temizliği.",
+    "Faz 2: SLA zaman takibi, reaktif ceza aşımında otomatik Acil İş İsteği, teknisyen iş yükü rozetleri, mükerrer arıza uyarısı ve Ekipman QR Karnesi.",
+    "Faz 3: Planlı Bakım & Günlük Checklist, Yedek Parça & Stok Yönetimi, Dijital Vardiya Devir Defteri ve Dış Servis / Sözleşme Takibi modülleri."
   ]
 }

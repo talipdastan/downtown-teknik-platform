@@ -90,6 +90,117 @@ class _ModuleLauncherScreenState extends ConsumerState<ModuleLauncherScreen> {
                 )
               else
                 ...visibleModules.map((mod) => _ModuleCard(module: mod)),
+              if (profile.role != 'employee') ...[
+                const SizedBox(height: 8),
+                const Padding(
+                  padding: EdgeInsets.only(left: 4, bottom: 6),
+                  child: Text(
+                    'KURUMSAL CMMS & SAHA ARAÇLARI',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.7,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+                Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () => context.push('/cmms?tab=0'),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      child: Row(
+                        children: [
+                          PastelIconBox(
+                            icon: Icons.fact_check_rounded,
+                            color: AppColors.accentTurquoise,
+                            background: AppColors.turquoiseSoft,
+                            size: 40,
+                            iconSize: 21,
+                          ),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Saha CMMS (Checklist · Vardiya · Stok)',
+                                  style: TextStyle(
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                                SizedBox(height: 2),
+                                Text(
+                                  'Planlı bakım rutinleri, nöbet devri ve kritik stok takibi',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () => context.push('/equipment-passport'),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      child: Row(
+                        children: [
+                          PastelIconBox(
+                            icon: Icons.qr_code_scanner_rounded,
+                            color: AppColors.primaryNavy,
+                            background: AppColors.primarySoft,
+                            size: 40,
+                            iconSize: 21,
+                          ),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Ekipman Karnesi & QR Sorgu',
+                                  style: TextStyle(
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                                SizedBox(height: 2),
+                                Text(
+                                  'Ekipman koduyla 360° arıza/bakım geçmişi ve hızlı arıza açma',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               if (canManageUsers) ...[
                 const SizedBox(height: 8),
                 const Padding(

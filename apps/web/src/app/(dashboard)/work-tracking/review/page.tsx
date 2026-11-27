@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Camera, CheckCircle2, MessageSquare, RotateCcw } from 'lucide-react';
 import { createClient } from '@/core/supabase/client';
+import { useDebouncedRealtime } from '@/core/hooks/useDebouncedRealtime';
 import { formatDateTime } from '@/core/constants';
 import { useDashboardAuth } from '@/core/DashboardContext';
 import { hasModulePermission } from '@/core/permissions';
@@ -141,27 +142,14 @@ export default function WorkTrackingReviewPage() {
 
   useEffect(() => {
     loadPending();
-    const supabase = createClient();
-    const channel = supabase
-      .channel('wt-review-live')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'work_orders' },
-        () => loadPending()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'tickets' },
-        () => loadPending()
-      )
-      .subscribe();
-    const onFocus = () => loadPending();
-    window.addEventListener('focus', onFocus);
-    return () => {
-      window.removeEventListener('focus', onFocus);
-      supabase.removeChannel(channel);
-    };
   }, [loadPending]);
+
+  useDebouncedRealtime({
+    channelName: 'wt-review-live',
+    tables: ['work_orders', 'tickets'],
+    onRefresh: loadPending,
+    delayMs: 500,
+  });
 
   async function handleApprove(item: ReviewItem) {
     setBusyId(item.id);

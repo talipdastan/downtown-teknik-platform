@@ -22,7 +22,17 @@ apps/mobile/ios/Pods/
 apps/mobile/ios/.symlinks/
 apps/mobile/dart_defines.json
 
-# Backups & sensitive exports
+# Backups, secrets, keystores & sensitive exports
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+key.properties
+apps/mobile/android/key.properties
+*.pem
+*.p12
+*.generated.json
 backups/
 *.tar.gz
 *.apk

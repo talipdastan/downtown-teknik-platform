@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:avm_tech_platform/core/auth/auth_provider.dart';
 import 'package:avm_tech_platform/core/config/supabase_config.dart';
+import 'package:avm_tech_platform/core/database/offline_sync_service.dart';
 import 'package:avm_tech_platform/core/notifications/notification_providers.dart';
 import 'package:avm_tech_platform/core/theme/app_theme.dart';
 import 'package:avm_tech_platform/core/widgets/modern_shell_widgets.dart';
@@ -29,6 +32,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   DateTime? _selectedDay;
   RealtimeChannel? _realtimeChannel;
+  Timer? _realtimeDebounce;
 
   static const List<String> _weekdayLabels = [
     'Pzt',
@@ -44,6 +48,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void initState() {
     super.initState();
     _setupRealtime();
+    OfflineSyncService.instance.startAutoSync(
+      onSynced: () {
+        if (mounted) {
+          invalidateAllWorkTrackingProviders(ref);
+          ref.invalidate(offlinePendingCountProvider);
+        }
+      },
+    );
+  }
+
+  void _scheduleRealtimeRefresh() {
+    _realtimeDebounce?.cancel();
+    _realtimeDebounce = Timer(const Duration(milliseconds: 500), () {
+      if (mounted) invalidateAllWorkTrackingProviders(ref);
+    });
   }
 
   void _setupRealtime() {
@@ -56,25 +75,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             event: PostgresChangeEvent.all,
             schema: 'public',
             table: 'tickets',
-            callback: (_) {
-              if (mounted) invalidateAllWorkTrackingProviders(ref);
-            },
+            callback: (_) => _scheduleRealtimeRefresh(),
           )
           .onPostgresChanges(
             event: PostgresChangeEvent.all,
             schema: 'public',
             table: 'work_orders',
-            callback: (_) {
-              if (mounted) invalidateAllWorkTrackingProviders(ref);
-            },
+            callback: (_) => _scheduleRealtimeRefresh(),
           )
           .onPostgresChanges(
             event: PostgresChangeEvent.all,
             schema: 'public',
             table: 'work_order_assignments',
-            callback: (_) {
-              if (mounted) invalidateAllWorkTrackingProviders(ref);
-            },
+            callback: (_) => _scheduleRealtimeRefresh(),
           )
           .subscribe();
     } catch (_) {
@@ -84,6 +97,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   void dispose() {
+    _realtimeDebounce?.cancel();
     final ch = _realtimeChannel;
     if (ch != null) {
       try {
@@ -184,6 +198,63 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
             children: [
+              ValueListenableBuilder<int>(
+                valueListenable: OfflineSyncService.instance.pendingCountNotifier,
+                builder: (context, pendingCount, _) {
+                  if (pendingCount <= 0) return const SizedBox.shrink();
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFFBEB),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFFDE68A)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.cloud_upload_outlined,
+                          size: 18,
+                          color: Color(0xFFB45309),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Çevrimdışı kuyrukta $pendingCount bekleyen kayıt var.',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF92400E),
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          onPressed: () async {
+                            final summary = await OfflineSyncService.instance.syncNow();
+                            if (mounted && summary != null && summary.syncedCount > 0) {
+                              invalidateAllWorkTrackingProviders(ref);
+                              ref.invalidate(offlinePendingCountProvider);
+                            }
+                          },
+                          child: const Text(
+                            'Gönder',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFFB45309),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
               // 1) KOYU LACİVERT HERO KPI KARTI (4 Tutarlı Aşama: Atama Bekleyen | Sahada | Onay Bekleyen | Kapandı)
               Container(
                 padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),

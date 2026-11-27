@@ -10,6 +10,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { createClient } from '@/core/supabase/client';
+import { useDebouncedRealtime } from '@/core/hooks/useDebouncedRealtime';
 import { formatDateTime, PRIORITY_LABELS, TICKET_STATUS_LABELS } from '@/core/constants';
 import { useDashboardAuth } from '@/core/DashboardContext';
 import { canAccessDashboardPath } from '@/core/moduleRegistry';
@@ -73,14 +74,7 @@ export default function WorkTrackingOverviewPage() {
     try {
       const supabase = createClient();
 
-      const [
-        recRes,
-        unassignedRes,
-        inFieldRes,
-        resolvedRes,
-        closedRes,
-        urgentRes,
-      ] = await Promise.all([
+      const [recRes, summaryRes] = await Promise.all([
         supabase
           .from('tickets')
           .select(
@@ -88,42 +82,54 @@ export default function WorkTrackingOverviewPage() {
           )
           .order('created_at', { ascending: false })
           .limit(50),
-        // 1. Aşama: Atama Bekleyen (henüz iş emri atanmamış new / under_review)
-        supabase
-          .from('tickets')
-          .select('id', { count: 'exact', head: true })
-          .in('status', ['new', 'under_review']),
-        // 2. Aşama: Sahada / İşlemde (assigned / in_progress / waiting)
-        supabase
-          .from('tickets')
-          .select('id', { count: 'exact', head: true })
-          .in('status', ['assigned', 'in_progress', 'waiting']),
-        // 3. Aşama: Çözüm Onayı Bekleyen (resolved - kesinlikle Kapandı sayılmaz!)
-        supabase
-          .from('tickets')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'resolved'),
-        // 4. Aşama: Kapandı (yalnızca onaylanıp kapanmış closed kayıtlar)
-        supabase
-          .from('tickets')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'closed'),
-        // Acil açık kayıtlar
-        supabase
-          .from('tickets')
-          .select('id', { count: 'exact', head: true })
-          .eq('priority', 'urgent')
-          .not('status', 'in', '("closed","cancelled")'),
+        supabase.rpc('rpc_work_tracking_dashboard_summary'),
       ]);
 
       if (recRes.error) throw recRes.error;
-
       setRecent((recRes.data as unknown as RecentTicket[]) ?? []);
-      setUnassignedCount(unassignedRes.count ?? 0);
-      setInFieldCount(inFieldRes.count ?? 0);
-      setAwaitingApprovalCount(resolvedRes.count ?? 0);
-      setClosedTotal(closedRes.count ?? 0);
-      setUrgentOpenCount(urgentRes.count ?? 0);
+
+      const summaryRow = Array.isArray(summaryRes.data)
+        ? (summaryRes.data[0] as Record<string, number> | undefined)
+        : (summaryRes.data as Record<string, number> | null);
+
+      if (!summaryRes.error && summaryRow) {
+        setUnassignedCount(Number(summaryRow.unassigned_count ?? 0));
+        setInFieldCount(Number(summaryRow.in_field_count ?? 0));
+        setAwaitingApprovalCount(Number(summaryRow.awaiting_approval_count ?? 0));
+        setClosedTotal(Number(summaryRow.closed_count ?? 0));
+        setUrgentOpenCount(Number(summaryRow.urgent_open_count ?? 0));
+      } else {
+        // Migration 0018 henüz canlıya alınmadıysa geriye uyumlu fallback
+        const [unassignedRes, inFieldRes, resolvedRes, closedRes, urgentRes] =
+          await Promise.all([
+            supabase
+              .from('tickets')
+              .select('id', { count: 'exact', head: true })
+              .in('status', ['new', 'under_review']),
+            supabase
+              .from('tickets')
+              .select('id', { count: 'exact', head: true })
+              .in('status', ['assigned', 'in_progress', 'waiting']),
+            supabase
+              .from('tickets')
+              .select('id', { count: 'exact', head: true })
+              .eq('status', 'resolved'),
+            supabase
+              .from('tickets')
+              .select('id', { count: 'exact', head: true })
+              .eq('status', 'closed'),
+            supabase
+              .from('tickets')
+              .select('id', { count: 'exact', head: true })
+              .eq('priority', 'urgent')
+              .not('status', 'in', '("closed","cancelled")'),
+          ]);
+        setUnassignedCount(unassignedRes.count ?? 0);
+        setInFieldCount(inFieldRes.count ?? 0);
+        setAwaitingApprovalCount(resolvedRes.count ?? 0);
+        setClosedTotal(closedRes.count ?? 0);
+        setUrgentOpenCount(urgentRes.count ?? 0);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Özet verileri yüklenemedi.');
     } finally {
@@ -133,30 +139,14 @@ export default function WorkTrackingOverviewPage() {
 
   useEffect(() => {
     loadOverview();
-
-    const supabase = createClient();
-    const channel = supabase
-      .channel('wt-overview-live')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'tickets' },
-        () => loadOverview(true)
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'work_orders' },
-        () => loadOverview(true)
-      )
-      .subscribe();
-
-    const onFocus = () => loadOverview(true);
-    window.addEventListener('focus', onFocus);
-
-    return () => {
-      window.removeEventListener('focus', onFocus);
-      supabase.removeChannel(channel);
-    };
   }, [loadOverview]);
+
+  useDebouncedRealtime({
+    channelName: 'wt-overview-live',
+    tables: ['tickets', 'work_orders'],
+    onRefresh: () => loadOverview(true),
+    delayMs: 500,
+  });
 
   const weekDays = useMemo(() => getCurrentWeekDays(), []);
   const today = useMemo(() => new Date(), []);

@@ -80,20 +80,46 @@ export const WEB_MODULES: WebModuleDefinition[] = [
   {
     key: 'maintenance',
     name: 'Planlı Bakım',
-    description: 'Periyodik bakım, bakım takvimi ve kontrol listeleri',
+    description: 'Periyodik bakım takvimi ve günlük saha kontrol listeleri',
     routePrefix: '/maintenance',
     sortOrder: 3,
-    isComingSoon: true,
-    navItems: [],
+    isComingSoon: false,
+    navItems: [
+      { label: 'Bakım Planları & Checklist', href: '/maintenance', requiredAnyPerms: ['enabled', 'view'] },
+    ],
   },
   {
-    key: 'assets',
-    name: 'Demirbaş & Ekipman',
-    description: 'Ekipman envanteri, garanti ve teknik geçmiş',
-    routePrefix: '/assets',
+    key: 'inventory',
+    name: 'Yedek Parça & Stok',
+    description: 'Teknik depo, sarf malzeme ve kritik stok seviye takibi',
+    routePrefix: '/inventory',
     sortOrder: 4,
-    isComingSoon: true,
-    navItems: [],
+    isComingSoon: false,
+    navItems: [
+      { label: 'Stok & Depo Hareketleri', href: '/inventory', requiredAnyPerms: ['enabled', 'view'] },
+    ],
+  },
+  {
+    key: 'shifts',
+    name: 'Vardiya Devir Defteri',
+    description: 'Dijital nöbet devir teslim ve vardiya onay defteri',
+    routePrefix: '/shifts',
+    sortOrder: 5,
+    isComingSoon: false,
+    navItems: [
+      { label: 'Nöbet Devir Kayıtları', href: '/shifts', requiredAnyPerms: ['enabled', 'view'] },
+    ],
+  },
+  {
+    key: 'contracts',
+    name: 'Dış Servis & Sözleşmeler',
+    description: 'Taşeron bakım sözleşmeleri ve yasal servis raporları',
+    routePrefix: '/contracts',
+    sortOrder: 6,
+    isComingSoon: false,
+    navItems: [
+      { label: 'Firmalar & Sözleşmeler', href: '/contracts', requiredAnyPerms: ['enabled', 'view'] },
+    ],
   },
 ];
 

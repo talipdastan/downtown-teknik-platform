@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
+import 'package:avm_tech_platform/core/database/offline_sync_service.dart';
 import 'package:avm_tech_platform/core/network/api_client.dart';
 import 'package:avm_tech_platform/core/theme/app_theme.dart';
 import 'package:avm_tech_platform/core/utils/error_utils.dart';
@@ -89,19 +90,23 @@ class _ReadingEntrySheetState extends State<_ReadingEntrySheet> {
       _error = null;
     });
 
+    final clientMutationId = const Uuid().v4();
+    final readingDateIso = _selectedDate.toUtc().toIso8601String();
+    final cleanNotes = _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim();
+
     try {
       await Api.client.rpc(
         'rpc_record_meter_reading',
         params: {
           'p_meter_id': widget.meter.id,
-          'p_reading_date': _selectedDate.toUtc().toIso8601String(),
+          'p_reading_date': readingDateIso,
           'p_active_value': active,
           'p_inductive_value': ind,
           'p_capacitive_value': cap,
           'p_index_value': index,
-          'p_notes': _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+          'p_notes': cleanNotes,
           'p_overwrite': overwrite,
-          'p_client_mutation_id': const Uuid().v4(),
+          'p_client_mutation_id': clientMutationId,
         },
       );
 
@@ -112,6 +117,28 @@ class _ReadingEntrySheetState extends State<_ReadingEntrySheet> {
       );
       Navigator.pop(context, true);
     } catch (e) {
+      if (OfflineSyncService.isLikelyNetworkError(e)) {
+        try {
+          await OfflineSyncService.instance.enqueueMeterReading(
+            clientMutationId: clientMutationId,
+            meterId: widget.meter.id,
+            readingDateIso: readingDateIso,
+            activeValue: active,
+            inductiveValue: ind,
+            capacitiveValue: cap,
+            indexValue: index,
+            notes: cleanNotes,
+            overwrite: overwrite,
+          );
+          if (!mounted) return;
+          showAppSnack(
+            context,
+            'İnternet yok. Sayaç okuması çevrimdışı kuyruğa alındı; bağlantı gelince otomatik gönderilecek.',
+          );
+          Navigator.pop(context, true);
+          return;
+        } catch (_) {}
+      }
       final raw = e.toString();
       if (!overwrite && raw.contains('SAME_DAY_EXISTS') && mounted) {
         final confirm = await showDialog<bool>(

@@ -91,6 +91,16 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: 'Sunucu Supabase ortam değişkenleri eksik.' }), { status: 500 });
     }
 
+    const webhookSecret = Deno.env.get('PUSH_WEBHOOK_SECRET') || '';
+    if (webhookSecret) {
+      const providedSecret = req.headers.get('x-webhook-secret') || '';
+      const authHeader = req.headers.get('authorization') || '';
+      const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`;
+      if (providedSecret !== webhookSecret && !isServiceRole) {
+        return new Response(JSON.stringify({ error: 'Yetkisiz webhook isteği.' }), { status: 401 });
+      }
+    }
+
     const payload = (await req.json()) as WebhookPayload;
     const notification = payload.record;
     if (!notification?.user_id || !notification?.title) {

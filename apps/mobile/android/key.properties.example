@@ -1,0 +1,6 @@
+# Bu dosyayi apps/mobile/android/key.properties olarak kopyalayip doldurun.
+# DIKKAT: key.properties ve .jks dosyalari ASLA Git'e eklenmemelidir (.gitignore ile korunur).
+storePassword=BURAYA_STORE_PAROLASI
+keyPassword=BURAYA_KEY_PAROLASI
+keyAlias=downtown-teknik-upload
+storeFile=upload-keystore.jks

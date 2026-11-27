@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../auth/auth_provider.dart';
 import '../modules/module_registry.dart';
 import '../permissions/permission_models.dart';
+import '../screens/cmms_hub_screen.dart';
+import '../screens/equipment_passport_screen.dart';
 import '../screens/login_screen.dart';
 import '../screens/module_launcher_screen.dart';
 import '../screens/notifications_screen.dart';
@@ -123,6 +125,17 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/profile',
         builder: (context, state) => const ProfileScreen(),
+      ),
+      GoRoute(
+        path: '/equipment-passport',
+        builder: (context, state) => const EquipmentPassportScreen(),
+      ),
+      GoRoute(
+        path: '/cmms',
+        builder: (context, state) {
+          final tab = int.tryParse(state.uri.queryParameters['tab'] ?? '0') ?? 0;
+          return CmmsHubScreen(initialTab: tab);
+        },
       ),
       // Tüm kayıtlı modüllerin rotaları otomatik olarak eklenir
       ...registry.buildAllRoutes(),

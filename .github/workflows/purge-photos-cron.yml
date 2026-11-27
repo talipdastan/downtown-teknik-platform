@@ -1,0 +1,45 @@
+name: Scheduled Photo Archive Purge (15+ Days Closed)
+
+on:
+  schedule:
+    # Her gece 03:00 (Turkiye saati / 00:00 UTC)
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Sadece silinecek kayit sayisini raporla (silme yapma)"
+        type: boolean
+        default: true
+
+jobs:
+  purge-photos:
+    name: Invoke purge-expired-photos Edge Function
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Supabase Edge Function
+        shell: bash
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          PHOTO_PURGE_CRON_SECRET: ${{ secrets.PHOTO_PURGE_CRON_SECRET }}
+          DRY_RUN: ${{ inputs.dry_run == true && 'true' || 'false' }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$PHOTO_PURGE_CRON_SECRET" ]; then
+            echo "::warning::SUPABASE_URL veya PHOTO_PURGE_CRON_SECRET tanimli degil; islem atlandi."
+            exit 0
+          fi
+
+          RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST \
+            "${SUPABASE_URL}/functions/v1/purge-expired-photos" \
+            -H "Content-Type: application/json" \
+            -H "X-Cron-Secret: ${PHOTO_PURGE_CRON_SECRET}" \
+            -d "{\"retentionDays\": 15, \"batchLimit\": 100, \"dryRun\": ${DRY_RUN}}")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "HTTP Status: $HTTP_CODE"
+          echo "Response: $BODY"
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "::error::purge-expired-photos basarisiz oldu (HTTP $HTTP_CODE)"
+            exit 1
+          fi

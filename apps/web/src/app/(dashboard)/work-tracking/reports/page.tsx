@@ -138,6 +138,7 @@ export default function WorkTrackingReportsPage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [rawTickets, setRawTickets] = useState<RawReportTicket[]>([]);
+  const [totalMatchedCount, setTotalMatchedCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -146,21 +147,36 @@ export default function WorkTrackingReportsPage() {
     setError(null);
     try {
       const supabase = createClient();
-      let q = supabase
-        .from('tickets')
-        .select(
-          'ticket_number, priority, status, created_at, resolved_at, closed_at, custom_location, custom_category, profiles!tickets_reporter_id_fkey(full_name), locations(name, floors(name)), categories(name, departments(name)), equipments(code, name), work_orders(id, status, started_at, completed_at, completer:profiles!work_orders_completed_by_fkey(full_name), departments(name), work_order_assignments(user_id, profiles!work_order_assignments_user_id_fkey(full_name)))'
-        )
-        .order('created_at', { ascending: false })
-        .limit(500);
+      const CHUNK_SIZE = 1000;
+      const MAX_ROWS = 5000;
+      const collected: RawReportTicket[] = [];
+      let exactTotal: number | null = null;
 
-      if (startDate) q = q.gte('created_at', `${startDate}T00:00:00`);
-      if (endDate) q = q.lte('created_at', `${endDate}T23:59:59`);
+      for (let offset = 0; offset < MAX_ROWS; offset += CHUNK_SIZE) {
+        let q = supabase
+          .from('tickets')
+          .select(
+            'ticket_number, priority, status, created_at, resolved_at, closed_at, custom_location, custom_category, profiles!tickets_reporter_id_fkey(full_name), locations(name, floors(name)), categories(name, departments(name)), equipments(code, name), work_orders(id, status, started_at, completed_at, completer:profiles!work_orders_completed_by_fkey(full_name), departments(name), work_order_assignments(user_id, profiles!work_order_assignments_user_id_fkey(full_name)))',
+            offset === 0 ? { count: 'exact' } : undefined
+          )
+          .order('created_at', { ascending: false })
+          .range(offset, offset + CHUNK_SIZE - 1);
 
-      const { data, error: qErr } = await q;
-      if (qErr) throw qErr;
+        if (startDate) q = q.gte('created_at', `${startDate}T00:00:00`);
+        if (endDate) q = q.lte('created_at', `${endDate}T23:59:59`);
 
-      setRawTickets((data as unknown as RawReportTicket[]) ?? []);
+        const { data, count, error: qErr } = await q;
+        if (qErr) throw qErr;
+        if (offset === 0 && typeof count === 'number') {
+          exactTotal = count;
+        }
+        const batch = (data as unknown as RawReportTicket[]) ?? [];
+        collected.push(...batch);
+        if (batch.length < CHUNK_SIZE) break;
+      }
+
+      setRawTickets(collected);
+      setTotalMatchedCount(exactTotal ?? collected.length);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Rapor verisi alınamadı.');
     } finally {
@@ -451,6 +467,13 @@ export default function WorkTrackingReportsPage() {
       </div>
 
       {/* Tarih Filtresi ve Hızlı Kısayollar */}
+      {totalMatchedCount !== null && totalMatchedCount > rawTickets.length && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs font-semibold text-amber-900">
+          Seçili aralıkta toplam <strong>{totalMatchedCount}</strong> kayıt bulundu; performans
+          sınırı nedeniyle en güncel <strong>{rawTickets.length}</strong> kayıt analiz edildi. Tam
+          sonuç için tarih aralığını daraltın.
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3.5">
         <div className="flex flex-wrap items-center gap-2">
           <button

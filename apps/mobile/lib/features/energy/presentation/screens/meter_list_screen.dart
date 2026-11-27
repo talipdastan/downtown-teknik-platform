@@ -188,10 +188,21 @@ class _MeterListScreenState extends ConsumerState<MeterListScreen> {
 
   Future<void> _saveReorder(List<MeterModel> list) async {
     try {
-      for (int i = 0; i < list.length; i++) {
-        await Api.client
-            .from('meters')
-            .update({'sort_order': i}).eq('id', list[i].id);
+      final meterIds = list.map((m) => m.id).toList();
+      try {
+        await Api.client.rpc(
+          'rpc_reorder_meters',
+          params: {'p_meter_ids': meterIds},
+        );
+      } catch (_) {
+        // Migration 0018 henüz uygulanmadıysa geriye uyumlu paralel güncelleme
+        await Future.wait([
+          for (int i = 0; i < list.length; i++)
+            Api.client
+                .from('meters')
+                .update({'sort_order': i})
+                .eq('id', list[i].id),
+        ]);
       }
       ref.invalidate(metersProvider(widget.meterType));
     } catch (e) {

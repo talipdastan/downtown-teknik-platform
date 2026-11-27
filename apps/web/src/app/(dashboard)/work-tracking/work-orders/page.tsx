@@ -20,6 +20,11 @@ import {
   X,
 } from 'lucide-react';
 import { createClient } from '@/core/supabase/client';
+import { useDebouncedRealtime } from '@/core/hooks/useDebouncedRealtime';
+import {
+  WorkOrderDetailDrawer,
+  WorkOrderDrawerInput,
+} from '@/components/WorkOrderDetailDrawer';
 import {
   formatDateTime,
   PRIORITY_LABELS,
@@ -170,6 +175,10 @@ export default function WorkTrackingWorkOrdersPage() {
   const [search, setSearch] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [totalOrdersCount, setTotalOrdersCount] = useState<number | null>(null);
+  const [orderLimit, setOrderLimit] = useState(300);
+  const [techWorkloads, setTechWorkloads] = useState<Record<string, number>>({});
+  const [drawerItem, setDrawerItem] = useState<WorkOrderDrawerInput | null>(null);
 
   // Düzenleme modalı
   const [editTarget, setEditTarget] = useState<WorkOrderRow | null>(null);
@@ -189,7 +198,26 @@ export default function WorkTrackingWorkOrdersPage() {
     setLoading(true);
     try {
       const supabase = createClient();
-      const [tRes, dRes, techRes, woRes] = await Promise.all([
+
+      // Tarih aralığı filtresi sunucu tarafında (PostgreSQL) uygulanır;
+      // 300+ kayıt sonrası eski tarih aralıklarında sessiz kırpılma olmaz.
+      let woQuery = supabase
+        .from('work_orders')
+        .select(
+          'id, ticket_id, department_id, status, work_description, waiting_reason, created_at, started_at, completed_at, completed_by, completer:profiles!work_orders_completed_by_fkey(full_name), tickets(ticket_number, description, priority, created_at, resolved_at, closed_at, custom_location, locations(name, floors(name)), profiles!tickets_reporter_id_fkey(full_name)), departments(name), equipments(code, name), work_order_assignments(user_id, profiles!work_order_assignments_user_id_fkey(full_name))',
+          { count: 'exact' }
+        )
+        .order('created_at', { ascending: false })
+        .limit(orderLimit);
+
+      if (startDate) {
+        woQuery = woQuery.gte('created_at', `${startDate}T00:00:00`);
+      }
+      if (endDate) {
+        woQuery = woQuery.lte('created_at', `${endDate}T23:59:59`);
+      }
+
+      const [tRes, dRes, techRes, woRes, wlRes] = await Promise.all([
         supabase
           .from('tickets')
           .select('id, ticket_number, description, priority, status')
@@ -203,49 +231,39 @@ export default function WorkTrackingWorkOrdersPage() {
           .in('role', ['technician', 'team_lead'])
           .eq('approval_status', 'approved')
           .order('full_name'),
-        supabase
-          .from('work_orders')
-          .select(
-            'id, ticket_id, department_id, status, work_description, waiting_reason, created_at, started_at, completed_at, completed_by, completer:profiles!work_orders_completed_by_fkey(full_name), tickets(ticket_number, description, priority, created_at, resolved_at, closed_at, custom_location, locations(name, floors(name)), profiles!tickets_reporter_id_fkey(full_name)), departments(name), equipments(code, name), work_order_assignments(user_id, profiles!work_order_assignments_user_id_fkey(full_name))'
-          )
-          .order('created_at', { ascending: false })
-          .limit(300),
+        woQuery,
+        supabase.rpc('rpc_get_technician_workloads'),
       ]);
       if (tRes.data) setTickets(tRes.data as OpenTicket[]);
       if (dRes.data) setDepts(dRes.data as Dept[]);
       if (techRes.data) setTechs(techRes.data as Tech[]);
       if (woRes.error) throw woRes.error;
       setOrders((woRes.data as unknown as WorkOrderRow[]) ?? []);
+      setTotalOrdersCount(woRes.count ?? null);
+      if (!wlRes.error && Array.isArray(wlRes.data)) {
+        const map: Record<string, number> = {};
+        for (const r of wlRes.data as Array<{ user_id: string; active_count: number }>) {
+          map[r.user_id] = Number(r.active_count ?? 0);
+        }
+        setTechWorkloads(map);
+      }
     } catch (err) {
       setMsg({ type: 'err', text: err instanceof Error ? err.message : 'Veriler alınamadı.' });
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [startDate, endDate, orderLimit]);
 
   useEffect(() => {
     loadAll();
-    const supabase = createClient();
-    const channel = supabase
-      .channel('wt-work-orders-live')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'work_orders' },
-        () => loadAll()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'tickets' },
-        () => loadAll()
-      )
-      .subscribe();
-    const onFocus = () => loadAll();
-    window.addEventListener('focus', onFocus);
-    return () => {
-      window.removeEventListener('focus', onFocus);
-      supabase.removeChannel(channel);
-    };
   }, [loadAll]);
+
+  useDebouncedRealtime({
+    channelName: 'wt-work-orders-live',
+    tables: ['work_orders', 'tickets'],
+    onRefresh: loadAll,
+    delayMs: 500,
+  });
 
   function applyDatePreset(preset: 'today' | 'this_week' | 'this_month' | 'last_30' | 'clear') {
     const now = new Date();
@@ -672,6 +690,22 @@ export default function WorkTrackingWorkOrdersPage() {
         </div>
       </div>
 
+      {totalOrdersCount !== null && totalOrdersCount > orders.length && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-900">
+          <span>
+            Seçili tarih aralığında toplam <strong>{totalOrdersCount}</strong> iş emri var; şu an
+            en güncel <strong>{orders.length}</strong> kayıt görüntüleniyor.
+          </span>
+          <button
+            type="button"
+            onClick={() => setOrderLimit((prev) => prev + 300)}
+            className="rounded-lg border border-amber-300 bg-white px-3 py-1 text-xs font-bold text-amber-900 hover:bg-amber-100"
+          >
+            +300 Daha Yükle
+          </button>
+        </div>
+      )}
+
       {msg && (
         <div
           className={`rounded-xl border p-3 text-sm font-medium ${
@@ -732,18 +766,32 @@ export default function WorkTrackingWorkOrdersPage() {
             <div className="flex flex-wrap gap-2">
               {techs.map((t) => {
                 const checked = selectedTechIds.includes(t.id);
+                const activeJobs = techWorkloads[t.id] ?? 0;
                 return (
                   <button
                     type="button"
                     key={t.id}
                     onClick={() => toggleTech(t.id)}
-                    className={`rounded-full border px-3 py-1 text-xs font-bold transition ${
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold transition ${
                       checked
                         ? 'border-navy bg-navy text-white shadow-sm'
                         : 'border-slate-200 bg-canvas text-slate-700 hover:bg-slate-100'
                     }`}
                   >
-                    {t.full_name}
+                    <span>{t.full_name}</span>
+                    <span
+                      className={`rounded-full px-1.5 py-0.2 text-[10px] font-extrabold ${
+                        checked
+                          ? 'bg-white/20 text-white'
+                          : activeJobs >= 3
+                          ? 'bg-rose-100 text-rose-700'
+                          : activeJobs > 0
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-emerald-100 text-emerald-700'
+                      }`}
+                    >
+                      {activeJobs} iş
+                    </span>
                   </button>
                 );
               })}
@@ -937,9 +985,36 @@ export default function WorkTrackingWorkOrdersPage() {
                       {/* 1. Arıza No & Mahal */}
                       <td className="whitespace-nowrap px-4 py-3.5">
                         <div className="flex items-center gap-1.5">
-                          <span className="font-extrabold text-navy">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDrawerItem({
+                                id: o.id,
+                                ticket_id: o.ticket_id,
+                                status: o.status,
+                                work_description: o.work_description,
+                                waiting_reason: o.waiting_reason,
+                                created_at: o.created_at,
+                                started_at: o.started_at,
+                                completed_at: o.completed_at,
+                                ticket_number: o.tickets?.ticket_number ?? '-',
+                                ticket_description: o.tickets?.description ?? '-',
+                                requester_name: requesterName,
+                                open_date: openDate,
+                                completer_name: completerName,
+                                department_name: o.departments?.name ?? '-',
+                                location_label: locationLabel,
+                                equipment_label: o.equipments
+                                  ? `${o.equipments.code} - ${o.equipments.name}`
+                                  : '-',
+                                technicians_label: techNames,
+                              })
+                            }
+                            className="font-extrabold text-navy underline-offset-2 hover:text-turquoise hover:underline"
+                            title="İş Emri 360° Detay, Fotoğraf ve Malzemeleri Gör"
+                          >
                             {o.tickets?.ticket_number ?? '-'}
-                          </span>
+                          </button>
                           {priority === 'urgent' && (
                             <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-extrabold text-red-700">
                               Acil
@@ -1280,6 +1355,8 @@ export default function WorkTrackingWorkOrdersPage() {
           </form>
         </div>
       )}
+
+      <WorkOrderDetailDrawer item={drawerItem} onClose={() => setDrawerItem(null)} />
     </div>
   );
 }

@@ -58,6 +58,19 @@ export function defaultModulePermission(
     return false;
   }
 
+  if (['maintenance', 'inventory', 'shifts', 'contracts'].includes(moduleKey)) {
+    if (role === 'technical_manager') {
+      return ['enabled', 'view', 'create', 'edit', 'reports', 'manage'].includes(perm);
+    }
+    if (role === 'team_lead') {
+      return ['enabled', 'view', 'create', 'edit', 'reports'].includes(perm);
+    }
+    if (role === 'technician') {
+      return ['enabled', 'view', 'create'].includes(perm);
+    }
+    return false;
+  }
+
   if (role === 'technical_manager') {
     return ['enabled', 'view', 'reports'].includes(perm);
   }

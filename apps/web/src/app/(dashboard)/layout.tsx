@@ -5,12 +5,16 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Bell,
+  BookOpen,
   Boxes,
   CheckCheck,
+  ClipboardCheck,
   Cpu,
+  FileSignature,
   LayoutGrid,
   LogOut,
   Menu,
+  Package,
   SlidersHorizontal,
   Users,
   Wrench,
@@ -67,6 +71,10 @@ function getInitials(name: string): string {
 function moduleBadgeLabel(key: string): string {
   if (key === 'energy') return 'Enerji';
   if (key === 'work_tracking') return 'İş Takip';
+  if (key === 'maintenance') return 'Planlı Bakım';
+  if (key === 'inventory') return 'Stok';
+  if (key === 'shifts') return 'Vardiya';
+  if (key === 'contracts') return 'Sözleşme';
   return 'Sistem';
 }
 
@@ -296,6 +304,10 @@ export default function DashboardLayout({
 
   const moduleIcon = (key: string) => {
     if (key === 'energy') return <Zap className="h-4 w-4" />;
+    if (key === 'maintenance') return <ClipboardCheck className="h-4 w-4" />;
+    if (key === 'inventory') return <Package className="h-4 w-4" />;
+    if (key === 'shifts') return <BookOpen className="h-4 w-4" />;
+    if (key === 'contracts') return <FileSignature className="h-4 w-4" />;
     return <Wrench className="h-4 w-4" />;
   };
 

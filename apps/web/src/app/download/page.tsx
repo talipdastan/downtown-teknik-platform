@@ -170,12 +170,20 @@ export default function MobileDownloadPage() {
 
             <div className="mt-6 space-y-2">
               <a
-                href="/download/downtown-teknik.apk"
-                download="downtown-teknik.apk"
+                href="/download/downtown-teknik-arm64-v8a.apk"
+                download="downtown-teknik-arm64-v8a.apk"
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-navy px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-navy-hover"
               >
                 <Download className="h-4 w-4" />
-                Android APK İndir (v{meta?.version ?? '1.2.0'})
+                Hızlı Android APK İndir – 64-bit (~21 MB · v{meta?.version ?? '1.3.0'})
+              </a>
+              <a
+                href="/download/downtown-teknik.apk"
+                download="downtown-teknik.apk"
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-canvas px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-100"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Tüm Cihazlar İçin Evrensel APK (Eski 32-bit telefonlar)
               </a>
               <p className="text-center text-[11px] text-slate-400">
                 Doğrudan bağlantı: {apkDirectUrl}

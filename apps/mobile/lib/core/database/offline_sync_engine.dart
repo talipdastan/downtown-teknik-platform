@@ -107,7 +107,14 @@ class JsonFileOfflineQueueStorage implements OfflineQueueStorage {
     if (!await file.parent.exists()) {
       await file.parent.create(recursive: true);
     }
-    await file.writeAsString(jsonEncode(root), flush: true);
+    // Atomik yazım: önce geçici dosyaya yaz, sonra hedefle değiştir.
+    // Yazma sırasında uygulama çökerse kuyruk dosyasının bozulmasını önler.
+    final tmpFile = File('${file.path}.tmp');
+    await tmpFile.writeAsString(jsonEncode(root), flush: true);
+    if (await file.exists()) {
+      await file.delete();
+    }
+    await tmpFile.rename(file.path);
   }
 
   @override
@@ -218,8 +225,40 @@ class OfflineSyncEngine {
     return item;
   }
 
+  /// Önceki oturumda uygulama çöktüğü için `syncing` durumunda kilitli kalan
+  /// mutasyon ve medya kayıtlarını güvenli biçimde tekrar `pending` durumuna çeker.
+  Future<int> recoverInterruptedSyncs() async {
+    var recovered = 0;
+    final mutations = await storage.loadMutations();
+    var mutChanged = false;
+    for (var i = 0; i < mutations.length; i++) {
+      if (mutations[i].status == SyncStatus.syncing) {
+        mutations[i] = mutations[i].copyWith(status: SyncStatus.pending);
+        mutChanged = true;
+        recovered++;
+      }
+    }
+    if (mutChanged) {
+      await storage.saveMutations(mutations);
+    }
+
+    final media = await storage.loadMedia();
+    var mediaChanged = false;
+    for (var i = 0; i < media.length; i++) {
+      if (media[i].status == SyncStatus.syncing) {
+        media[i] = media[i].copyWith(status: SyncStatus.pending);
+        mediaChanged = true;
+      }
+    }
+    if (mediaChanged) {
+      await storage.saveMedia(media);
+    }
+    return recovered;
+  }
+
   /// Kuyruktaki bekleyen veya backoff süresi dolmuş kayıtları sırayla senkronize eder.
   Future<SyncBatchSummary> processPending({DateTime? nowOverride}) async {
+    await recoverInterruptedSyncs();
     final now = (nowOverride ?? DateTime.now()).toUtc();
     final mutations = await storage.loadMutations()
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));

@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
 import 'package:avm_tech_platform/core/theme/app_theme.dart';
+import 'package:avm_tech_platform/core/database/offline_sync_service.dart';
 import 'package:avm_tech_platform/core/network/api_client.dart';
 import 'package:avm_tech_platform/features/work_tracking/data/attachment_service.dart';
 import 'package:avm_tech_platform/core/utils/error_utils.dart';
@@ -104,6 +105,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
     }
 
     setState(() => _submitting = true);
+    final clientMutationId = const Uuid().v4();
     try {
       // Kimliği istemcide üretiyoruz: RLS "select" politikası, INSERT ... RETURNING
       // sırasında yeni satırı göremeyebileceği için geri dönüş değerine güvenmiyoruz.
@@ -118,6 +120,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
         if (_equipmentId != null) 'equipment_id': _equipmentId,
         'priority': _priority,
         'description': description,
+        'client_mutation_id': clientMutationId,
       });
 
       var failed = 0;
@@ -141,6 +144,29 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
       );
       context.pop();
     } catch (e) {
+      if (OfflineSyncService.isLikelyNetworkError(e)) {
+        try {
+          await OfflineSyncService.instance.enqueueTicket(
+            clientMutationId: clientMutationId,
+            locationId: isOtherLocation ? null : _locationId,
+            customLocation: finalCustomLocation,
+            categoryId: isOtherCategory ? null : _categoryId,
+            customCategory: isOtherCategory ? _customCategoryCtrl.text.trim() : null,
+            equipmentId: _equipmentId,
+            priority: _priority,
+            description: description,
+            photos: List<XFile>.from(_images),
+          );
+          ref.invalidate(offlinePendingCountProvider);
+          if (!mounted) return;
+          showAppSnack(
+            context,
+            'İnternet bağlantısı yok. Arıza kaydı çevrimdışı kuyruğa alındı; bağlantı gelince otomatik gönderilecek.',
+          );
+          context.pop();
+          return;
+        } catch (_) {}
+      }
       if (mounted) showAppSnack(context, 'Kayıt oluşturulamadı: ${friendlyError(e)}', error: true);
     } finally {
       if (mounted) setState(() => _submitting = false);

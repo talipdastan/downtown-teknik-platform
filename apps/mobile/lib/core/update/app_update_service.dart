@@ -15,6 +15,7 @@ class AppUpdateInfo {
   final String version;
   final int buildNumber;
   final String apkUrl;
+  final Map<String, String> apkUrls;
   final bool mandatory;
   final List<String> releaseNotes;
 
@@ -22,18 +23,31 @@ class AppUpdateInfo {
     required this.version,
     required this.buildNumber,
     required this.apkUrl,
+    this.apkUrls = const {},
     this.mandatory = false,
     this.releaseNotes = const [],
   });
 
   factory AppUpdateInfo.fromJson(Map<String, dynamic> json) {
     final rawNotes = json['releaseNotes'];
+    final rawUrls = json['apkUrls'];
+    final parsedUrls = <String, String>{};
+    if (rawUrls is Map) {
+      for (final entry in rawUrls.entries) {
+        final k = entry.key.toString().trim();
+        final v = entry.value?.toString().trim() ?? '';
+        if (k.isNotEmpty && v.isNotEmpty) {
+          parsedUrls[k] = v;
+        }
+      }
+    }
     return AppUpdateInfo(
       version: (json['version'] ?? '1.0.0').toString().trim(),
       buildNumber: (json['buildNumber'] is num)
           ? (json['buildNumber'] as num).toInt()
           : int.tryParse(json['buildNumber']?.toString() ?? '1') ?? 1,
       apkUrl: (json['apkUrl'] ?? '').toString().trim(),
+      apkUrls: parsedUrls,
       mandatory: json['mandatory'] == true,
       releaseNotes: rawNotes is List
           ? rawNotes.map((e) => e.toString()).toList()
@@ -56,11 +70,11 @@ class AppUpdateService {
 
   static const String currentVersion = String.fromEnvironment(
     'APP_VERSION',
-    defaultValue: '1.2.4',
+    defaultValue: '1.3.0',
   );
   static const int currentBuildNumber = int.fromEnvironment(
     'APP_BUILD_NUMBER',
-    defaultValue: 7,
+    defaultValue: 8,
   );
 
   /// 1) Bulut Güncelleme Kanalı (4.5G / Mobil Veri / Her Yerden Erişilebilir)
@@ -295,6 +309,67 @@ class AppUpdateService {
     );
   }
 
+  /// Cihazın desteklediği birincil Android ABI mimarisini (`arm64-v8a`, `armeabi-v7a` vb.) döner.
+  static Future<String?> detectPreferredAbi() async {
+    if (kIsWeb) return null;
+    try {
+      final abis = await _channel.invokeMethod<List<dynamic>>('getSupportedAbis');
+      if (abis == null || abis.isEmpty) return null;
+      final normalized = abis.map((e) => e.toString().trim()).toList();
+      if (normalized.contains('arm64-v8a')) return 'arm64-v8a';
+      if (normalized.contains('armeabi-v7a')) return 'armeabi-v7a';
+      return normalized.first;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Verilen güncelleme bilgisi ve cihaz ABI'sine göre en hafif ve en güvenilir
+  /// indirme URL listesini sırayla üretir (4.5G HTTPS ABI-split -> Universal -> LAN).
+  static List<String> buildCandidateApkUrls(
+    AppUpdateInfo info, {
+    String? preferredAbi,
+  }) {
+    final urls = <String>[];
+    void addUnique(String? url) {
+      final clean = url?.trim() ?? '';
+      if (clean.isNotEmpty && !urls.contains(clean)) {
+        urls.add(clean);
+      }
+    }
+
+    final abiUrl = preferredAbi != null ? info.apkUrls[preferredAbi] : null;
+    if (abiUrl != null && abiUrl.startsWith('https://')) {
+      addUnique(abiUrl);
+    }
+    if (preferredAbi == 'arm64-v8a' || preferredAbi == 'armeabi-v7a') {
+      addUnique(
+        'https://github.com/talipdastan/downtown-teknik-platform/releases/latest/download/downtown-teknik-$preferredAbi.apk',
+      );
+    }
+
+    final universalUrl = info.apkUrls['universal'];
+    if (universalUrl != null && universalUrl.startsWith('https://')) {
+      addUnique(universalUrl);
+    }
+    if (info.apkUrl.startsWith('https://')) {
+      addUnique(info.apkUrl);
+    }
+    addUnique(githubReleaseApkUrl);
+
+    if (preferredAbi == 'arm64-v8a' || preferredAbi == 'armeabi-v7a') {
+      addUnique('$lanServerBaseUrl/download/downtown-teknik-$preferredAbi.apk');
+    }
+    if (abiUrl != null && !abiUrl.startsWith('https://')) {
+      addUnique(abiUrl);
+    }
+    if (info.apkUrl.isNotEmpty && !info.apkUrl.startsWith('https://')) {
+      addUnique(info.apkUrl);
+    }
+    addUnique('$lanServerBaseUrl/download/downtown-teknik.apk');
+    return urls;
+  }
+
   /// Tarayıcı açmadan indirilen paketi Android PackageInstaller ile kurar.
   static Future<bool> installDownloadedApk(String filePath) async {
     try {
@@ -342,15 +417,12 @@ class _InAppUpdateDialogState extends State<_InAppUpdateDialog> {
       _statusText = 'Güncelleme paketi hazırlanıyor...';
     });
 
-    // Önce GitHub Release (4.5G/her yerden), yoksa AVM sunucusu URL'sini dene
-    final candidateUrls = <String>[
-      if (widget.info.apkUrl.startsWith('https://')) widget.info.apkUrl,
-      AppUpdateService.githubReleaseApkUrl,
-      if (widget.info.apkUrl.isNotEmpty &&
-          !widget.info.apkUrl.startsWith('https://'))
-        widget.info.apkUrl,
-      '${AppUpdateService.lanServerBaseUrl}/download/downtown-teknik.apk',
-    ];
+    // Önce cihaz ABI'sine uygun ~21 MB HTTPS (4.5G/GitHub Release), yoksa universal ve LAN dene
+    final preferredAbi = await AppUpdateService.detectPreferredAbi();
+    final candidateUrls = AppUpdateService.buildCandidateApkUrls(
+      widget.info,
+      preferredAbi: preferredAbi,
+    );
 
     File? downloadedFile;
     for (final url in candidateUrls) {

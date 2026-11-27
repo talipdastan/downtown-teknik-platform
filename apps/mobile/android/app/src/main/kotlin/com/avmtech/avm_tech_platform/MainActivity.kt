@@ -62,6 +62,9 @@ class MainActivity : FlutterActivity() {
                             result.error("OPEN_ERROR", e.localizedMessage, null)
                         }
                     }
+                    "getSupportedAbis" -> {
+                        result.success(Build.SUPPORTED_ABIS.toList())
+                    }
                     else -> result.notImplemented()
                 }
             }

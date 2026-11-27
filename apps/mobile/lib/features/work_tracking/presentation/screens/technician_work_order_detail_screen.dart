@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 
 import 'package:avm_tech_platform/features/work_tracking/presentation/widgets/work_tracking_widgets.dart';
 import 'package:avm_tech_platform/core/theme/app_theme.dart';
+import 'package:avm_tech_platform/core/database/offline_sync_service.dart';
 import 'package:avm_tech_platform/core/network/api_client.dart';
 import 'package:avm_tech_platform/features/work_tracking/data/attachment_service.dart';
 import 'package:avm_tech_platform/core/utils/error_utils.dart';
@@ -130,7 +131,8 @@ class _TechnicianWorkOrderDetailScreenState
       return;
     }
     final note = _noteCtrl.text.trim();
-    await _run(() async {
+    setState(() => _busy = true);
+    try {
       if (!_afterUploaded) {
         await AttachmentService.upload(file: photo, workOrderId: _id, type: 'after');
         _afterUploaded = true;
@@ -142,7 +144,39 @@ class _TechnicianWorkOrderDetailScreenState
       _afterPhoto = null;
       _afterUploaded = false;
       _noteCtrl.clear();
-    }, 'İş emri tamamlandı ve yönetici onayına gönderildi.');
+      _refresh();
+      if (mounted) {
+        showAppSnack(context, 'İş emri tamamlandı ve yönetici onayına gönderildi.');
+      }
+    } catch (e) {
+      if (OfflineSyncService.isLikelyNetworkError(e)) {
+        try {
+          final currentUpdatedAt =
+              ref.read(workOrderViewProvider(_id)).valueOrNull?.order.updatedAt;
+          await OfflineSyncService.instance.enqueueWorkOrderStatus(
+            workOrderId: _id,
+            targetStatus: 'completed',
+            baseUpdatedAt: currentUpdatedAt,
+            note: note.isEmpty ? null : note,
+            afterPhoto: _afterUploaded ? null : photo,
+          );
+          ref.invalidate(offlinePendingCountProvider);
+          _afterPhoto = null;
+          _afterUploaded = false;
+          _noteCtrl.clear();
+          if (mounted) {
+            showAppSnack(
+              context,
+              'İnternet yok. İş emri tamamlama ve fotoğraf çevrimdışı kuyruğa alındı; bağlantı gelince otomatik gönderilecek.',
+            );
+          }
+          return;
+        } catch (_) {}
+      }
+      if (mounted) showAppSnack(context, friendlyError(e), error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override

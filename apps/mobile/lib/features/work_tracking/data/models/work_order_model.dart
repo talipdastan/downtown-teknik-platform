@@ -11,6 +11,7 @@ class WorkOrderModel {
   final DateTime? startedAt;
   final DateTime? completedAt;
   final DateTime createdAt;
+  final DateTime? updatedAt;
 
   WorkOrderModel({
     required this.id,
@@ -25,6 +26,7 @@ class WorkOrderModel {
     this.startedAt,
     this.completedAt,
     required this.createdAt,
+    this.updatedAt,
   });
 
   factory WorkOrderModel.fromJson(Map<String, dynamic> json) {
@@ -41,6 +43,7 @@ class WorkOrderModel {
       startedAt: json['started_at'] != null ? DateTime.tryParse(json['started_at'] as String) : null,
       completedAt: json['completed_at'] != null ? DateTime.tryParse(json['completed_at'] as String) : null,
       createdAt: DateTime.tryParse(json['created_at'] as String? ?? '') ?? DateTime.now(),
+      updatedAt: json['updated_at'] != null ? DateTime.tryParse(json['updated_at'] as String) : null,
     );
   }
 
