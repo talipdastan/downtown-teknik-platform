@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   CalendarClock,
@@ -58,11 +59,7 @@ export default function MaintenancePage() {
     profile?.role === 'technical_manager' ||
     hasModulePermission(profile, 'maintenance', 'manage');
 
-  const [plans, setPlans] = useState<PlanRow[]>([]);
-  const [executions, setExecutions] = useState<ExecutionRow[]>([]);
-  const [equipments, setEquipments] = useState<OptionItem[]>([]);
-  const [departments, setDepartments] = useState<OptionItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
   // Yeni plan modalı
@@ -84,9 +81,9 @@ export default function MaintenancePage() {
   const [autoTicket, setAutoTicket] = useState(true);
   const [submittingExec, setSubmittingExec] = useState(false);
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
-    try {
+  const { data: pageData, isLoading: loading } = useQuery({
+    queryKey: ['cmms', 'maintenance'],
+    queryFn: async () => {
       const supabase = createClient();
       const [pRes, eRes, eqRes, dRes] = await Promise.all([
         supabase
@@ -102,20 +99,23 @@ export default function MaintenancePage() {
         supabase.from('departments').select('id, name').eq('is_active', true).order('name'),
       ]);
       if (pRes.error) throw pRes.error;
-      setPlans((pRes.data as unknown as PlanRow[]) ?? []);
-      setExecutions((eRes.data as unknown as ExecutionRow[]) ?? []);
-      setEquipments((eqRes.data as OptionItem[]) ?? []);
-      setDepartments((dRes.data as OptionItem[]) ?? []);
-    } catch (err) {
-      setMsg({ type: 'err', text: err instanceof Error ? err.message : 'Bakım verileri alınamadı.' });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      return {
+        plans: (pRes.data as unknown as PlanRow[]) ?? [],
+        executions: (eRes.data as unknown as ExecutionRow[]) ?? [],
+        equipments: (eqRes.data as OptionItem[]) ?? [],
+        departments: (dRes.data as OptionItem[]) ?? [],
+      };
+    },
+  });
 
-  useEffect(() => {
-    loadAll();
-  }, [loadAll]);
+  const plans = useMemo(() => pageData?.plans ?? [], [pageData]);
+  const executions = useMemo(() => pageData?.executions ?? [], [pageData]);
+  const equipments = useMemo(() => pageData?.equipments ?? [], [pageData]);
+  const departments = useMemo(() => pageData?.departments ?? [], [pageData]);
+
+  const loadAll = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['cmms', 'maintenance'] });
+  };
 
   const todayIso = new Date().toISOString().slice(0, 10);
   const stats = useMemo(() => {

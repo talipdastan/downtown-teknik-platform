@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Calendar,
   Camera,
@@ -25,6 +26,10 @@ import {
   WorkOrderDetailDrawer,
   WorkOrderDrawerInput,
 } from '@/components/WorkOrderDetailDrawer';
+import {
+  CompleteWorkOrderModal,
+  EditWorkOrderModal,
+} from '@/features/work-tracking/components/WorkOrderModals';
 import {
   formatDateTime,
   PRIORITY_LABELS,
@@ -65,17 +70,13 @@ export default function WorkTrackingWorkOrdersPage() {
   const canDeleteWO = hasModulePermission(profile, 'work_tracking', 'delete');
   const canReports = hasModulePermission(profile, 'work_tracking', 'reports');
 
-  const [tickets, setTickets] = useState<OpenTicket[]>([]);
-  const [depts, setDepts] = useState<Dept[]>([]);
-  const [techs, setTechs] = useState<Tech[]>([]);
-  const [orders, setOrders] = useState<WorkOrderRow[]>([]);
+  const queryClient = useQueryClient();
 
   // Yeni iş emri formu
   const [ticketId, setTicketId] = useState('');
   const [deptId, setDeptId] = useState('');
   const [selectedTechIds, setSelectedTechIds] = useState<string[]>([]);
   const [note, setNote] = useState('');
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [purgingPhotos, setPurgingPhotos] = useState(false);
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
@@ -85,9 +86,7 @@ export default function WorkTrackingWorkOrdersPage() {
   const [search, setSearch] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [totalOrdersCount, setTotalOrdersCount] = useState<number | null>(null);
   const [orderLimit, setOrderLimit] = useState(300);
-  const [techWorkloads, setTechWorkloads] = useState<Record<string, number>>({});
   const [drawerItem, setDrawerItem] = useState<WorkOrderDrawerInput | null>(null);
 
   // Düzenleme modalı
@@ -104,9 +103,10 @@ export default function WorkTrackingWorkOrdersPage() {
   const [completePhotos, setCompletePhotos] = useState<File[]>([]);
   const [completing, setCompleting] = useState(false);
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
-    try {
+  const { data: woPageData, isLoading: loading } = useQuery({
+    queryKey: ['wt', 'work-orders', { startDate, endDate, orderLimit }],
+    placeholderData: (prev) => prev,
+    queryFn: async () => {
       const supabase = createClient();
 
       // Tarih aralığı filtresi sunucu tarafında (PostgreSQL) uygulanır;
@@ -144,29 +144,34 @@ export default function WorkTrackingWorkOrdersPage() {
         woQuery,
         supabase.rpc('rpc_get_technician_workloads'),
       ]);
-      if (tRes.data) setTickets(tRes.data as OpenTicket[]);
-      if (dRes.data) setDepts(dRes.data as Dept[]);
-      if (techRes.data) setTechs(techRes.data as Tech[]);
       if (woRes.error) throw woRes.error;
-      setOrders((woRes.data as unknown as WorkOrderRow[]) ?? []);
-      setTotalOrdersCount(woRes.count ?? null);
+      const workloads: Record<string, number> = {};
       if (!wlRes.error && Array.isArray(wlRes.data)) {
-        const map: Record<string, number> = {};
         for (const r of wlRes.data as Array<{ user_id: string; active_count: number }>) {
-          map[r.user_id] = Number(r.active_count ?? 0);
+          workloads[r.user_id] = Number(r.active_count ?? 0);
         }
-        setTechWorkloads(map);
       }
-    } catch (err) {
-      setMsg({ type: 'err', text: err instanceof Error ? err.message : 'Veriler alınamadı.' });
-    } finally {
-      setLoading(false);
-    }
-  }, [startDate, endDate, orderLimit]);
+      return {
+        tickets: (tRes.data as OpenTicket[]) ?? [],
+        depts: (dRes.data as Dept[]) ?? [],
+        techs: (techRes.data as Tech[]) ?? [],
+        orders: (woRes.data as unknown as WorkOrderRow[]) ?? [],
+        totalOrdersCount: woRes.count ?? null,
+        techWorkloads: workloads,
+      };
+    },
+  });
 
-  useEffect(() => {
-    loadAll();
-  }, [loadAll]);
+  const tickets = useMemo(() => woPageData?.tickets ?? [], [woPageData]);
+  const depts = useMemo(() => woPageData?.depts ?? [], [woPageData]);
+  const techs = useMemo(() => woPageData?.techs ?? [], [woPageData]);
+  const orders = useMemo(() => woPageData?.orders ?? [], [woPageData]);
+  const totalOrdersCount = woPageData?.totalOrdersCount ?? null;
+  const techWorkloads = useMemo(() => woPageData?.techWorkloads ?? {}, [woPageData]);
+
+  const loadAll = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ['wt', 'work-orders'] });
+  }, [queryClient]);
 
   useDebouncedRealtime({
     channelName: 'wt-work-orders-live',
@@ -1130,180 +1135,32 @@ export default function WorkTrackingWorkOrdersPage() {
         </div>
       </div>
 
-      {/* Tamamla & Fotoğraf Ekle Modalı */}
-      {completeTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
-          <form
-            onSubmit={handleCompleteSubmit}
-            className="w-full max-w-lg space-y-4 rounded-2xl bg-white p-6 shadow-xl"
-          >
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h2 className="text-lg font-extrabold text-navy">
-                İş Emrini Tamamla · {completeTarget.tickets?.ticket_number ?? ''}
-              </h2>
-              <button
-                type="button"
-                onClick={() => setCompleteTarget(null)}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+      <CompleteWorkOrderModal
+        target={completeTarget}
+        completeNote={completeNote}
+        setCompleteNote={setCompleteNote}
+        completePhotos={completePhotos}
+        setCompletePhotos={setCompletePhotos}
+        completing={completing}
+        onClose={() => setCompleteTarget(null)}
+        onSubmit={handleCompleteSubmit}
+      />
 
-            <div>
-              <label className="mb-1 block text-xs font-bold text-slate-600">
-                Tamamlanma Notu
-              </label>
-              <textarea
-                rows={3}
-                placeholder="Yapılan işlem detayını yazınız..."
-                value={completeNote}
-                onChange={(e) => setCompleteNote(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm focus:border-navy focus:outline-none"
-              />
-            </div>
-
-            <div className="rounded-xl border border-dashed border-slate-300 bg-canvas p-3">
-              <label className="flex cursor-pointer items-center gap-2 text-xs font-bold text-navy">
-                <Camera className="h-4 w-4 text-turquoise" />
-                <span>Çözüm Sonrası Fotoğraf Ekle (Otomatik ~100 KB Sıkıştırmalı)</span>
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  onChange={(e) =>
-                    setCompletePhotos(Array.from(e.target.files ?? []).slice(0, 5))
-                  }
-                  className="hidden"
-                />
-              </label>
-              {completePhotos.length > 0 && (
-                <div className="mt-2 space-y-1 text-xs text-slate-600">
-                  {completePhotos.map((f, i) => (
-                    <div key={i} className="truncate">
-                      • {f.name}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setCompleteTarget(null)}
-                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600"
-              >
-                Vazgeç
-              </button>
-              <button
-                type="submit"
-                disabled={completing}
-                className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
-              >
-                {completing ? 'Gönderiliyor...' : 'Tamamla ve Onaya Gönder'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* İş Emri Düzenleme Modalı */}
-      {editTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
-          <form
-            onSubmit={handleSaveEdit}
-            className="w-full max-w-lg space-y-4 rounded-2xl bg-white p-6 shadow-xl"
-          >
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h2 className="text-lg font-extrabold text-navy">
-                İş Emri Düzenle · {editTarget.tickets?.ticket_number ?? ''}
-              </h2>
-              <button
-                type="button"
-                onClick={() => setEditTarget(null)}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-xs font-bold text-slate-600">Departman</label>
-                <select
-                  value={editDeptId}
-                  onChange={(e) => setEditDeptId(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm"
-                >
-                  {depts.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-bold text-slate-600">Durum</label>
-                <select
-                  value={editStatus}
-                  onChange={(e) => setEditStatus(e.target.value as WorkOrderStatus)}
-                  className="w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm"
-                >
-                  {Object.entries(WORK_ORDER_STATUS_LABELS).map(([k, v]) => (
-                    <option key={k} value={k}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label className="mb-1 block text-xs font-bold text-slate-600">
-                İş Açıklaması / Talimat
-              </label>
-              <textarea
-                rows={3}
-                value={editDesc}
-                onChange={(e) => setEditDesc(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm"
-              />
-            </div>
-
-            {editStatus === 'waiting' && (
-              <div>
-                <label className="mb-1 block text-xs font-bold text-orange-700">
-                  Bekleme Gerekçesi
-                </label>
-                <input
-                  type="text"
-                  value={editWaitingReason}
-                  onChange={(e) => setEditWaitingReason(e.target.value)}
-                  className="w-full rounded-xl border border-orange-200 bg-orange-50/50 px-3 py-2 text-sm"
-                />
-              </div>
-            )}
-
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setEditTarget(null)}
-                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600"
-              >
-                Vazgeç
-              </button>
-              <button
-                type="submit"
-                disabled={savingEdit}
-                className="rounded-xl bg-navy px-4 py-2 text-xs font-bold text-white hover:bg-navy-hover disabled:opacity-50"
-              >
-                {savingEdit ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+      <EditWorkOrderModal
+        target={editTarget}
+        depts={depts}
+        editDeptId={editDeptId}
+        setEditDeptId={setEditDeptId}
+        editStatus={editStatus}
+        setEditStatus={setEditStatus}
+        editDesc={editDesc}
+        setEditDesc={setEditDesc}
+        editWaitingReason={editWaitingReason}
+        setEditWaitingReason={setEditWaitingReason}
+        savingEdit={savingEdit}
+        onClose={() => setEditTarget(null)}
+        onSubmit={handleSaveEdit}
+      />
 
       <WorkOrderDetailDrawer item={drawerItem} onClose={() => setDrawerItem(null)} />
     </div>

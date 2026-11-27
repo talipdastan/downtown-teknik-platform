@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   BookOpen,
@@ -37,8 +38,7 @@ const SHIFT_LABELS: Record<ShiftRow['shift_type'], string> = {
 
 export default function ShiftHandoversPage() {
   const { profile } = useDashboardAuth();
-  const [rows, setRows] = useState<ShiftRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
   const [shiftDate, setShiftDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -46,9 +46,9 @@ export default function ShiftHandoversPage() {
   const [summaryNotes, setSummaryNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
-    try {
+  const { data: rows = [], isLoading: loading } = useQuery({
+    queryKey: ['cmms', 'shifts'],
+    queryFn: async () => {
       const supabase = createClient();
       const { data, error } = await supabase
         .from('shift_handovers')
@@ -59,17 +59,13 @@ export default function ShiftHandoversPage() {
         .order('handed_over_at', { ascending: false })
         .limit(50);
       if (error) throw error;
-      setRows((data as unknown as ShiftRow[]) ?? []);
-    } catch (err) {
-      setMsg({ type: 'err', text: err instanceof Error ? err.message : 'Vardiya kayıtları alınamadı.' });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      return (data as unknown as ShiftRow[]) ?? [];
+    },
+  });
 
-  useEffect(() => {
-    loadAll();
-  }, [loadAll]);
+  const loadAll = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['cmms', 'shifts'] });
+  };
 
   async function handleCreateHandover(e: React.FormEvent) {
     e.preventDefault();

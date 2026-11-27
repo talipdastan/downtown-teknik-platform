@@ -59,6 +59,11 @@ import {
   OTHER_VALUE,
   UserRow,
 } from '@/features/admin/user-helpers';
+import {
+  CustomRolesModal,
+  EditUserModal,
+  UserPermissionsModal,
+} from '@/features/admin/components/UserModals';
 
 export default function AdminUsersPage() {
   const { refreshProfile } = useDashboardAuth();
@@ -1356,465 +1361,64 @@ export default function AdminUsersPage() {
         </div>
       </div>
 
-      {/* Tam Personel Bilgileri & Şifre Düzenleme Modalı */}
-      {editTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
-          <form
-            onSubmit={handleSaveFullEdit}
-            className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl bg-white shadow-xl"
-          >
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-              <h2 className="flex items-center gap-2 text-lg font-extrabold text-navy">
-                <Pencil className="h-5 w-5 text-turquoise" />
-                Personel Bilgileri & Şifre Düzenle
-              </h2>
-              <button
-                type="button"
-                onClick={() => setEditTarget(null)}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+      <EditUserModal
+        target={editTarget}
+        currentProfileId={currentProfile?.id}
+        depts={depts}
+        roleOptions={roleOptions}
+        customRoles={customRoles}
+        editFullName={editFullName}
+        setEditFullName={setEditFullName}
+        editPhone={editPhone}
+        setEditPhone={setEditPhone}
+        editEmail={editEmail}
+        setEditEmail={setEditEmail}
+        editApprovalStatus={editApprovalStatus}
+        setEditApprovalStatus={setEditApprovalStatus}
+        editRoleSelect={editRoleSelect}
+        setEditRoleSelect={setEditRoleSelect}
+        editCustomRoleText={editCustomRoleText}
+        setEditCustomRoleText={setEditCustomRoleText}
+        editDeptSelect={editDeptSelect}
+        setEditDeptSelect={setEditDeptSelect}
+        editCustomDeptText={editCustomDeptText}
+        setEditCustomDeptText={setEditCustomDeptText}
+        editPassword={editPassword}
+        setEditPassword={setEditPassword}
+        savingEdit={savingEdit}
+        onClose={() => setEditTarget(null)}
+        onSubmit={handleSaveFullEdit}
+      />
 
-            <div className="grid grid-cols-1 gap-4 overflow-y-auto p-6 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-xs font-bold text-slate-600">Ad Soyad *</label>
-                <input
-                  type="text"
-                  required
-                  value={editFullName}
-                  onChange={(e) => setEditFullName(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm focus:border-navy focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-bold text-slate-600">Telefon</label>
-                <input
-                  type="tel"
-                  value={editPhone}
-                  onChange={(e) => setEditPhone(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm focus:border-navy focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-bold text-slate-600">
-                  E-Posta Adresi
-                </label>
-                <input
-                  type="email"
-                  value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm focus:border-navy focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-bold text-slate-600">
-                  Hesap / Onay Durumu
-                </label>
-                <select
-                  disabled={editTarget.id === currentProfile?.id}
-                  value={editApprovalStatus}
-                  onChange={(e) => setEditApprovalStatus(e.target.value as ApprovalStatus)}
-                  className="w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm font-medium focus:border-navy focus:outline-none disabled:opacity-60"
-                >
-                  {(Object.keys(APPROVAL_LABELS) as ApprovalStatus[]).map((s) => (
-                    <option key={s} value={s}>
-                      {APPROVAL_LABELS[s]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-bold text-slate-600">Rol / Ünvan</label>
-                <select
-                  disabled={editTarget.id === currentProfile?.id}
-                  value={editRoleSelect}
-                  onChange={(e) => {
-                    setEditRoleSelect(e.target.value);
-                    if (e.target.value !== OTHER_VALUE) setEditCustomRoleText('');
-                  }}
-                  className="w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm font-medium focus:border-navy focus:outline-none disabled:opacity-60"
-                >
-                  {roleOptions.map((x) => (
-                    <option key={x} value={x}>
-                      {ROLE_LABELS[x]}
-                    </option>
-                  ))}
-                  {customRoles.map((cr) => (
-                    <option key={cr.id} value={CUSTOM_PREFIX + cr.id}>
-                      {cr.name} ({ROLE_LABELS[cr.base_role]})
-                    </option>
-                  ))}
-                  <option value={OTHER_VALUE}>Diğer (Manuel Giriş)</option>
-                </select>
-                {editRoleSelect === OTHER_VALUE && (
-                  <input
-                    type="text"
-                    required
-                    value={editCustomRoleText}
-                    onChange={(e) => setEditCustomRoleText(e.target.value)}
-                    placeholder="Özel rol / ünvan yazınız..."
-                    className="mt-2 w-full rounded-xl border border-navy/40 bg-navy-soft/40 px-3 py-2 text-sm focus:border-navy focus:outline-none"
-                  />
-                )}
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-bold text-slate-600">Departman</label>
-                <select
-                  value={editDeptSelect}
-                  onChange={(e) => {
-                    setEditDeptSelect(e.target.value);
-                    if (e.target.value !== OTHER_VALUE) setEditCustomDeptText('');
-                  }}
-                  className="w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm font-medium focus:border-navy focus:outline-none"
-                >
-                  <option value="">Departman yok</option>
-                  {depts.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                  <option value={OTHER_VALUE}>Diğer (Manuel Giriş)</option>
-                </select>
-                {editDeptSelect === OTHER_VALUE && (
-                  <input
-                    type="text"
-                    required
-                    value={editCustomDeptText}
-                    onChange={(e) => setEditCustomDeptText(e.target.value)}
-                    placeholder="Yeni departman adını yazınız..."
-                    className="mt-2 w-full rounded-xl border border-navy/40 bg-navy-soft/40 px-3 py-2 text-sm focus:border-navy focus:outline-none"
-                  />
-                )}
-              </div>
-
-              <div className="space-y-2 rounded-xl border border-slate-200 bg-canvas p-4 sm:col-span-2">
-                <label className="flex items-center gap-1.5 text-xs font-extrabold uppercase text-navy">
-                  <KeyRound className="h-3.5 w-3.5 text-turquoise" />
-                  Şifre Sıfırlama / Manuel Şifre Belirleme
-                </label>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <input
-                    type="text"
-                    value={editPassword}
-                    onChange={(e) => setEditPassword(e.target.value)}
-                    placeholder="Değiştirmek istemiyorsanız boş bırakın (en az 6 karakter)"
-                    className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-navy focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setEditPassword('123456')}
-                    className="shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100"
-                  >
-                    123456 Olarak Sıfırla
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 rounded-b-2xl border-t border-slate-100 bg-canvas px-6 py-4">
-              <button
-                type="button"
-                onClick={() => setEditTarget(null)}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
-              >
-                Vazgeç
-              </button>
-              <button
-                type="submit"
-                disabled={savingEdit}
-                className="rounded-xl bg-navy px-5 py-2 text-xs font-bold text-white hover:bg-navy-hover disabled:opacity-50"
-              >
-                {savingEdit ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
-              </button>
-            </div>
-          </form>
-        </div>
+      {canManageUsers && (
+        <UserPermissionsModal
+          target={permTarget}
+          isAdmin={isAdmin}
+          permModules={permModules}
+          permCoreActions={permCoreActions}
+          savingPerm={savingPerm}
+          onSetAllModulePerms={setAllModulePerms}
+          onToggleModulePerm={toggleModulePerm}
+          onToggleCoreAction={toggleCoreAction}
+          onResetToDefault={resetPermToRoleDefault}
+          onSave={savePermissions}
+          onClose={() => setPermTarget(null)}
+        />
       )}
 
-      {/* Merkezi Modül & İşlem Yetkileri Modalı */}
-      {canManageUsers && permTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
-          <div className="flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-              <div>
-                <h2 className="flex items-center gap-2 text-lg font-extrabold text-navy">
-                  <Shield className="h-5 w-5 text-turquoise" />
-                  Merkezi Modül & İşlem Yetkileri
-                </h2>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  {permTarget.full_name} · {permTarget.custom_role || ROLE_LABELS[permTarget.role]}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPermTarget(null)}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="space-y-6 overflow-y-auto p-6">
-              {/* Bölüm 1: Modül Bazlı 8 Bağımsız İzin Anahtarı */}
-              <div className="space-y-4">
-                <div className="text-xs font-extrabold uppercase tracking-wider text-navy">
-                  1. Modül Bazlı 8 Bağımsız İzin Anahtarı
-                </div>
-
-                {EDITABLE_MODULES.map((mod) => {
-                  const modState = permModules[mod.key];
-                  return (
-                    <div
-                      key={mod.key}
-                      className="rounded-2xl border border-slate-200 bg-canvas p-4"
-                    >
-                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-extrabold text-slate-900">
-                            {mod.label}
-                          </span>
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
-                              modState.enabled
-                                ? 'bg-emerald-100 text-emerald-700'
-                                : 'bg-slate-200 text-slate-600'
-                            }`}
-                          >
-                            {modState.enabled ? 'Aktif' : 'Kapalı'}
-                          </span>
-                        </div>
-
-                        <div className="flex gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setAllModulePerms(mod.key, true)}
-                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-navy hover:bg-navy-soft"
-                          >
-                            Tümünü Seç
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setAllModulePerms(mod.key, false)}
-                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-100"
-                          >
-                            Temizle
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                        {MODULE_PERMISSION_DEFS.map((def) => {
-                          const checked = Boolean(modState[def.key]);
-                          return (
-                            <label
-                              key={def.key}
-                              className={`flex cursor-pointer items-center gap-2 rounded-xl border p-2.5 text-xs transition ${
-                                checked
-                                  ? 'border-turquoise bg-white font-bold text-slate-900 shadow-sm'
-                                  : 'border-slate-200 bg-white/60 font-medium text-slate-600 hover:bg-white'
-                              }`}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => toggleModulePerm(mod.key, def.key)}
-                                className="h-4 w-4 rounded border-slate-300 text-navy"
-                              />
-                              <span className="leading-tight">{def.label}</span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Bölüm 2: Çekirdek Yönetim Yetkileri */}
-              <div className="space-y-3">
-                <div className="text-xs font-extrabold uppercase tracking-wider text-navy">
-                  2. Çekirdek Yönetim Yetkileri (Core Actions)
-                </div>
-
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {CORE_ACTION_DEFS.map((act) => {
-                    const checked = permCoreActions.includes(act.key);
-                    const locked = act.key === 'manage_modules' && !isAdmin;
-                    return (
-                      <label
-                        key={act.key}
-                        className={`flex items-start gap-2.5 rounded-xl border p-3 transition ${
-                          locked
-                            ? 'cursor-not-allowed border-slate-200 bg-slate-50 opacity-60'
-                            : checked
-                            ? 'cursor-pointer border-navy bg-navy-soft/40'
-                            : 'cursor-pointer border-slate-200 bg-white hover:bg-canvas'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          disabled={locked}
-                          checked={checked}
-                          onChange={() => toggleCoreAction(act.key)}
-                          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-navy"
-                        />
-                        <div>
-                          <div className="text-xs font-bold text-slate-900">{act.label}</div>
-                          <div className="mt-0.5 text-[11px] text-slate-500">
-                            {locked ? 'Yalnızca Sistem Yöneticisi verebilir.' : act.desc}
-                          </div>
-                        </div>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-b-2xl border-t border-slate-100 bg-canvas px-6 py-4">
-              <button
-                type="button"
-                onClick={resetPermToRoleDefault}
-                className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
-              >
-                Rol Varsayılanına Döndür
-              </button>
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPermTarget(null)}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
-                >
-                  Vazgeç
-                </button>
-                <button
-                  type="button"
-                  disabled={savingPerm}
-                  onClick={savePermissions}
-                  className="rounded-xl bg-navy px-5 py-2 text-xs font-bold text-white hover:bg-navy-hover disabled:opacity-50"
-                >
-                  {savingPerm ? 'Kaydediliyor...' : 'Yetkileri Kaydet'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Özel Rol Yönetimi Modalı */}
-      {isAdmin && showRolesModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4">
-          <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-              <h2 className="flex items-center gap-2 text-lg font-extrabold text-navy">
-                <Shield className="h-5 w-5 text-turquoise" />
-                Rolleri Yönet (Ekle / Çıkar)
-              </h2>
-              <button
-                type="button"
-                onClick={() => setShowRolesModal(false)}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="space-y-5 overflow-y-auto p-6">
-              <form
-                onSubmit={handleAddCustomRole}
-                className="space-y-3 rounded-2xl border border-slate-200 bg-canvas p-4"
-              >
-                <div className="text-xs font-extrabold uppercase text-navy">
-                  Yeni Özel Rol / Ünvan Ekle
-                </div>
-                <input
-                  type="text"
-                  required
-                  value={newCustomRoleName}
-                  onChange={(e) => setNewCustomRoleName(e.target.value)}
-                  placeholder="Rol adı (örn: Vardiya Amiri, Danışma, Güvenlik Şefi)"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-navy focus:outline-none"
-                />
-                <div className="flex gap-2">
-                  <select
-                    value={newCustomRoleBase}
-                    onChange={(e) => setNewCustomRoleBase(e.target.value as UserRole)}
-                    className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-navy focus:outline-none"
-                  >
-                    <option value="employee">Temel Yetki: AVM Personeli</option>
-                    <option value="technician">Temel Yetki: Teknik Personel</option>
-                    <option value="team_lead">Temel Yetki: Ekip Sorumlusu</option>
-                    <option value="technical_manager">Temel Yetki: Teknik Yönetici</option>
-                  </select>
-                  <button
-                    type="submit"
-                    disabled={savingRole}
-                    className="rounded-xl bg-navy px-4 py-2 text-xs font-bold text-white hover:bg-navy-hover disabled:opacity-50"
-                  >
-                    {savingRole ? 'Ekleniyor...' : 'Ekle'}
-                  </button>
-                </div>
-              </form>
-
-              <div>
-                <div className="mb-2 text-xs font-extrabold uppercase text-slate-500">
-                  Eklenen Özel Roller
-                </div>
-                {customRoles.length === 0 ? (
-                  <p className="text-xs text-slate-400">Henüz özel rol eklenmemiş.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {customRoles.map((cr) => (
-                      <div
-                        key={cr.id}
-                        className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3 text-sm"
-                      >
-                        <div>
-                          <span className="font-bold text-slate-800">{cr.name}</span>
-                          <span className="ml-2 text-xs text-slate-500">
-                            ({ROLE_LABELS[cr.base_role]})
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteCustomRole(cr)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-bold text-red-700 hover:bg-red-100"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          Çıkar
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <div className="mb-2 text-xs font-extrabold uppercase text-slate-500">
-                  Sabit Sistem Rolleri
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {ALL_ROLES.map((r) => (
-                    <span
-                      key={r}
-                      className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700"
-                    >
-                      {ROLE_LABELS[r]}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+      {isAdmin && (
+        <CustomRolesModal
+          open={showRolesModal}
+          customRoles={customRoles}
+          newCustomRoleName={newCustomRoleName}
+          setNewCustomRoleName={setNewCustomRoleName}
+          newCustomRoleBase={newCustomRoleBase}
+          setNewCustomRoleBase={setNewCustomRoleBase}
+          savingRole={savingRole}
+          onAddRole={handleAddCustomRole}
+          onDeleteRole={handleDeleteCustomRole}
+          onClose={() => setShowRolesModal(false)}
+        />
       )}
     </div>
   );

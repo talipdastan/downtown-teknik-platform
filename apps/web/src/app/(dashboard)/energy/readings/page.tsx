@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileDown, FileSpreadsheet, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { createClient } from '@/core/supabase/client';
-import { METER_SELECT } from '@/core/supabase/selects';
+import { METER_READING_SELECT, METER_SELECT } from '@/core/supabase/selects';
 import { formatDate } from '@/core/constants';
 import { useDashboardAuth } from '@/core/DashboardContext';
 import { hasModulePermission } from '@/core/permissions';
@@ -37,14 +38,12 @@ export default function EnergyReadingsPage() {
   const canDelete = hasModulePermission(profile, 'energy', 'delete');
   const canReports = hasModulePermission(profile, 'energy', 'reports');
 
-  const [meters, setMeters] = useState<Meter[]>([]);
-  const [rows, setRows] = useState<ReadingWithMeter[]>([]);
+  const queryClient = useQueryClient();
   const [typeFilter, setTypeFilter] = useState<ReadingsViewMode>('all');
   const [meterFilter, setMeterFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
   // Yeni okuma girişi
@@ -69,13 +68,30 @@ export default function EnergyReadingsPage() {
   const [editNotes, setEditNotes] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
+  const { data: meters = [] } = useQuery({
+    queryKey: ['energy', 'active-meters'],
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('meters')
+        .select(METER_SELECT)
+        .eq('is_active', true)
+        .is('deleted_at', null)
+        .order('name');
+      if (error) throw error;
+      return (data as Meter[]) ?? [];
+    },
+  });
+
+  const { data: rows = [], isLoading: loading } = useQuery({
+    queryKey: ['energy', 'readings', { typeFilter, meterFilter, dateFrom, dateTo, page }],
+    placeholderData: (prev) => prev,
+    queryFn: async () => {
       const supabase = createClient();
       let q = supabase
         .from('meter_readings')
-        .select('*, meters!inner(name, meter_type, category, multiplier, deleted_at)')
+        .select(`${METER_READING_SELECT}, meters!inner(name, meter_type, category, multiplier, deleted_at)`)
         .is('meters.deleted_at', null)
         .order('reading_date', { ascending: false })
         .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
@@ -85,32 +101,15 @@ export default function EnergyReadingsPage() {
       if (dateFrom) q = q.gte('reading_date', `${dateFrom}T00:00:00+03:00`);
       if (dateTo) q = q.lte('reading_date', `${dateTo}T23:59:59+03:00`);
 
-      const [mRes, rRes] = await Promise.all([
-        supabase
-          .from('meters')
-          .select(METER_SELECT)
-          .eq('is_active', true)
-          .is('deleted_at', null)
-          .order('name'),
-        q,
-      ]);
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data as unknown as ReadingWithMeter[]) ?? [];
+    },
+  });
 
-      if (mRes.data) setMeters(mRes.data as Meter[]);
-      if (rRes.error) throw rRes.error;
-      setRows((rRes.data as unknown as ReadingWithMeter[]) ?? []);
-    } catch (err) {
-      setMsg({
-        type: 'err',
-        text: err instanceof Error ? err.message : 'Okumalar alınamadı.',
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [meterFilter, typeFilter, dateFrom, dateTo, page]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  const loadData = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['energy', 'readings'] });
+  };
 
   const electricMeters = meters.filter((m) => m.meter_type === 'electric');
   const mechanicalMeters = meters.filter((m) => m.meter_type === 'mechanical');

@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   ArrowDownCircle,
@@ -53,11 +54,9 @@ export default function InventoryPage() {
     profile?.role === 'technical_manager' ||
     hasModulePermission(profile, 'inventory', 'manage');
 
-  const [items, setItems] = useState<InventoryItem[]>([]);
-  const [movements, setMovements] = useState<MovementRow[]>([]);
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [onlyCritical, setOnlyCritical] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
   // Yeni malzeme modalı
@@ -79,9 +78,9 @@ export default function InventoryPage() {
   const [moveNote, setMoveNote] = useState('');
   const [moving, setMoving] = useState(false);
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
-    try {
+  const { data: pageData, isLoading: loading } = useQuery({
+    queryKey: ['cmms', 'inventory'],
+    queryFn: async () => {
       const supabase = createClient();
       const [iRes, mRes] = await Promise.all([
         supabase
@@ -96,18 +95,19 @@ export default function InventoryPage() {
           .limit(40),
       ]);
       if (iRes.error) throw iRes.error;
-      setItems((iRes.data as InventoryItem[]) ?? []);
-      setMovements((mRes.data as unknown as MovementRow[]) ?? []);
-    } catch (err) {
-      setMsg({ type: 'err', text: err instanceof Error ? err.message : 'Stok verileri alınamadı.' });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      return {
+        items: (iRes.data as InventoryItem[]) ?? [],
+        movements: (mRes.data as unknown as MovementRow[]) ?? [],
+      };
+    },
+  });
 
-  useEffect(() => {
-    loadAll();
-  }, [loadAll]);
+  const items = useMemo(() => pageData?.items ?? [], [pageData]);
+  const movements = useMemo(() => pageData?.movements ?? [], [pageData]);
+
+  const loadAll = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['cmms', 'inventory'] });
+  };
 
   const criticalCount = useMemo(
     () => items.filter((i) => Number(i.current_stock) <= Number(i.min_stock)).length,

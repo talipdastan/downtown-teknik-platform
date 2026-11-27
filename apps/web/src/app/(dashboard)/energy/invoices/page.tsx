@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   FileDown,
   FileSpreadsheet,
@@ -95,12 +96,10 @@ export default function EnergyInvoicesPage() {
   const canDelete = hasModulePermission(profile, 'energy', 'delete') || canManage;
   const canReports = hasModulePermission(profile, 'energy', 'reports');
 
+  const queryClient = useQueryClient();
   const [year, setYear] = useState(new Date().getFullYear());
   const [monthFilter, setMonthFilter] = useState(0); // 0 = Tüm Yıl
   const [utilityFilter, setUtilityFilter] = useState<'all' | 'electric' | 'gas' | 'water'>('all');
-  const [invoices, setInvoices] = useState<EnergyInvoice[]>([]);
-  const [budgets, setBudgets] = useState<EnergyBudget[]>([]);
-  const [meters, setMeters] = useState<Meter[]>([]);
   const [showReportWizard, setShowReportWizard] = useState(false);
   const [drafts, setDrafts] = useState<ParsedDraft[]>([]);
   const [parsing, setParsing] = useState(false);
@@ -142,8 +141,10 @@ export default function EnergyInvoicesPage() {
     }
   }, []);
 
-  const loadAll = useCallback(async () => {
-    try {
+  const { data: invoicesData } = useQuery({
+    queryKey: ['energy', 'invoices', year],
+    placeholderData: (prev) => prev,
+    queryFn: async () => {
       const supabase = createClient();
       const [invRes, mRes, bRes] = await Promise.all([
         supabase
@@ -156,21 +157,26 @@ export default function EnergyInvoicesPage() {
         supabase.from('energy_budgets').select(ENERGY_BUDGET_SELECT).eq('period_year', year),
       ]);
       if (invRes.error) throw invRes.error;
-      setInvoices((invRes.data as EnergyInvoice[]) ?? []);
-      if (mRes.data) setMeters(mRes.data as Meter[]);
-      if (bRes.data) setBudgets(bRes.data as EnergyBudget[]);
-      setSelectedIds([]);
-    } catch (err) {
-      setMsg({
-        type: 'err',
-        text: err instanceof Error ? err.message : 'Faturalar yüklenemedi.',
-      });
-    }
-  }, [year]);
+      return {
+        invoices: (invRes.data as EnergyInvoice[]) ?? [],
+        meters: (mRes.data as Meter[]) ?? [],
+        budgets: (bRes.data as EnergyBudget[]) ?? [],
+      };
+    },
+  });
+
+  const invoices = useMemo(() => invoicesData?.invoices ?? [], [invoicesData]);
+  const meters = useMemo(() => invoicesData?.meters ?? [], [invoicesData]);
+  const budgets = useMemo(() => invoicesData?.budgets ?? [], [invoicesData]);
 
   useEffect(() => {
-    loadAll();
-  }, [loadAll]);
+    setSelectedIds([]);
+  }, [year]);
+
+  const loadAll = async () => {
+    setSelectedIds([]);
+    await queryClient.invalidateQueries({ queryKey: ['energy', 'invoices', year] });
+  };
 
   function saveGeminiKey() {
     try {

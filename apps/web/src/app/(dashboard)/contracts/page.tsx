@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Building2,
   FileSignature,
@@ -73,10 +74,7 @@ export default function ContractsPage() {
     profile?.role === 'technical_manager' ||
     hasModulePermission(profile, 'contracts', 'manage');
 
-  const [vendors, setVendors] = useState<VendorRow[]>([]);
-  const [contracts, setContracts] = useState<ContractRow[]>([]);
-  const [reports, setReports] = useState<ServiceReportRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
   const [modal, setModal] = useState<'vendor' | 'contract' | 'report' | null>(null);
@@ -105,9 +103,9 @@ export default function ContractsPage() {
   const [rTech, setRTech] = useState('');
   const [rSummary, setRSummary] = useState('');
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
-    try {
+  const { data: pageData, isLoading: loading } = useQuery({
+    queryKey: ['cmms', 'contracts'],
+    queryFn: async () => {
       const supabase = createClient();
       const [vRes, cRes, rRes] = await Promise.all([
         supabase.from('vendors').select('id, name, service_category, contact_name, contact_phone, rating').eq('is_active', true).order('name'),
@@ -122,19 +120,21 @@ export default function ContractsPage() {
           .limit(40),
       ]);
       if (vRes.error) throw vRes.error;
-      setVendors((vRes.data as VendorRow[]) ?? []);
-      setContracts((cRes.data as unknown as ContractRow[]) ?? []);
-      setReports((rRes.data as unknown as ServiceReportRow[]) ?? []);
-    } catch (err) {
-      setMsg({ type: 'err', text: err instanceof Error ? err.message : 'Sözleşme verileri alınamadı.' });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      return {
+        vendors: (vRes.data as VendorRow[]) ?? [],
+        contracts: (cRes.data as unknown as ContractRow[]) ?? [],
+        reports: (rRes.data as unknown as ServiceReportRow[]) ?? [],
+      };
+    },
+  });
 
-  useEffect(() => {
-    loadAll();
-  }, [loadAll]);
+  const vendors = useMemo(() => pageData?.vendors ?? [], [pageData]);
+  const contracts = useMemo(() => pageData?.contracts ?? [], [pageData]);
+  const reports = useMemo(() => pageData?.reports ?? [], [pageData]);
+
+  const loadAll = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['cmms', 'contracts'] });
+  };
 
   const stats = useMemo(() => {
     const nowMs = Date.now();
