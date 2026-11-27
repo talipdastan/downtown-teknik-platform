@@ -670,15 +670,21 @@ class _EnergyInvoicesScreenState extends ConsumerState<EnergyInvoicesScreen>
                     Expanded(
                       child: DropdownButtonFormField<int>(
                         initialValue: _selectedYear,
+                        isExpanded: true,
                         decoration: const InputDecoration(
                           labelText: 'Yıl',
                           isDense: true,
+                          contentPadding:
+                              EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                         ),
                         items: [
                           for (int y = DateTime.now().year - 2;
                               y <= DateTime.now().year + 1;
                               y++)
-                            DropdownMenuItem(value: y, child: Text('$y')),
+                            DropdownMenuItem(
+                              value: y,
+                              child: Text('$y', overflow: TextOverflow.ellipsis),
+                            ),
                         ],
                         onChanged: (v) {
                           if (v != null) setState(() => _selectedYear = v);
@@ -690,13 +696,22 @@ class _EnergyInvoicesScreenState extends ConsumerState<EnergyInvoicesScreen>
                       flex: 2,
                       child: DropdownButtonFormField<int>(
                         initialValue: _selectedMonth,
+                        isExpanded: true,
                         decoration: const InputDecoration(
                           labelText: 'Dönem (Ay)',
                           isDense: true,
+                          contentPadding:
+                              EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                         ),
                         items: [
                           for (int m = 0; m <= 12; m++)
-                            DropdownMenuItem(value: m, child: Text(_months[m])),
+                            DropdownMenuItem(
+                              value: m,
+                              child: Text(
+                                _months[m],
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
                         ],
                         onChanged: (v) {
                           if (v != null) setState(() => _selectedMonth = v);
@@ -709,8 +724,14 @@ class _EnergyInvoicesScreenState extends ConsumerState<EnergyInvoicesScreen>
                 Row(
                   children: [
                     Expanded(
-                      flex: 3,
                       child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 10,
+                          ),
+                          minimumSize: const Size(0, 42),
+                        ),
                         onPressed: (yearInvoices.isEmpty && budgets.isEmpty)
                             ? null
                             : () => showEnergyReportWizardSheet(
@@ -722,7 +743,7 @@ class _EnergyInvoicesScreenState extends ConsumerState<EnergyInvoicesScreen>
                                   budgets: budgets,
                                   meters: meters,
                                 ),
-                        icon: const Icon(Icons.tune_rounded, size: 17),
+                        icon: const Icon(Icons.tune_rounded, size: 16),
                         label: const Text(
                           'Rapor Sihirbazı',
                           maxLines: 1,
@@ -732,8 +753,14 @@ class _EnergyInvoicesScreenState extends ConsumerState<EnergyInvoicesScreen>
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      flex: 2,
                       child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 10,
+                          ),
+                          minimumSize: const Size(0, 42),
+                        ),
                         onPressed: yearInvoices.isEmpty
                             ? null
                             : () => EnergyExcelService.exportMonthlyInvoicesReport(
@@ -742,7 +769,7 @@ class _EnergyInvoicesScreenState extends ConsumerState<EnergyInvoicesScreen>
                                   invoices: yearInvoices,
                                   budgets: budgets,
                                 ),
-                        icon: const Icon(Icons.download_outlined, size: 17),
+                        icon: const Icon(Icons.download_outlined, size: 16),
                         label: const Text(
                           'Hızlı Excel',
                           maxLines: 1,
