@@ -520,14 +520,16 @@ class _AssignWorkOrderSheetState extends ConsumerState<_AssignWorkOrderSheet> {
     final deptsAsync = ref.watch(activeDepartmentsProvider);
     final techsAsync = ref.watch(approvedTechniciansProvider);
 
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 16,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-      ),
-      child: SingleChildScrollView(
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+        ),
+        child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -630,6 +632,7 @@ class _AssignWorkOrderSheetState extends ConsumerState<_AssignWorkOrderSheet> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

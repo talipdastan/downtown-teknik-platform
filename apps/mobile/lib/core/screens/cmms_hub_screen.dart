@@ -55,13 +55,16 @@ class _CmmsHubScreenState extends ConsumerState<CmmsHubScreen>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabCtrl,
-        children: const [
-          _MaintenanceChecklistTab(),
-          _ShiftHandoverTab(),
-          _InventoryQuickTab(),
-        ],
+      body: SafeArea(
+        top: false,
+        child: TabBarView(
+          controller: _tabCtrl,
+          children: const [
+            _MaintenanceChecklistTab(),
+            _ShiftHandoverTab(),
+            _InventoryQuickTab(),
+          ],
+        ),
       ),
     );
   }
@@ -125,15 +128,18 @@ class _MaintenanceChecklistTabState extends State<_MaintenanceChecklistTab> {
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheetState) => Padding(
-          padding: EdgeInsets.fromLTRB(
-            16,
-            16,
-            16,
-            MediaQuery.of(ctx).viewInsets.bottom + 16,
-          ),
-          child: SingleChildScrollView(
+        builder: (ctx, setSheetState) => SafeArea(
+          top: false,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              16,
+              16,
+              MediaQuery.of(ctx).viewInsets.bottom + 20,
+            ),
+            child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -192,6 +198,7 @@ class _MaintenanceChecklistTabState extends State<_MaintenanceChecklistTab> {
                 ),
               ],
             ),
+          ),
           ),
         ),
       ),

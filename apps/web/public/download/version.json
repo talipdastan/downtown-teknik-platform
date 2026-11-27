@@ -1,7 +1,7 @@
 {
-  "version": "1.3.2",
-  "buildNumber": 10,
-  "releaseDate": "2026-11-27T20:50:00+03:00",
+  "version": "1.3.3",
+  "buildNumber": 11,
+  "releaseDate": "2026-11-27T21:06:00+03:00",
   "apkUrl": "https://github.com/talipdastan/downtown-teknik-platform/releases/latest/download/downtown-teknik.apk",
   "apkUrls": {
     "arm64-v8a": "https://github.com/talipdastan/downtown-teknik-platform/releases/latest/download/downtown-teknik-arm64-v8a.apk",
@@ -10,8 +10,6 @@
   },
   "mandatory": false,
   "releaseNotes": [
-    "4.5G ve dış ağ üzerinden doğrudan GitHub Releases imzalı APK (~22 MB) indirme desteği aktifleştirildi.",
-    "İş Takip Ana Ekran ve Fatura & Bütçe dar ekran düzen iyileştirmeleri (ParentDataWidget & 320px taşma düzeltmesi).",
-    "Web panelinde 10 ana modül TanStack Query önbellek katmanına geçirildi ve 15 günlük fotoğraf temizliği resmi Storage API'ye bağlandı."
+    "Android 15/16 alt navigasyon çubuğunun (||| O <) altında kalan İş Emri Ata, CMMS Checklist ve Ekipman Karnesi ekranlarına SafeArea koruması eklendi."
   ]
 }

@@ -72,7 +72,12 @@ class _EquipmentPassportScreenState
     return Scaffold(
       appBar: AppBar(title: const Text('Ekipman Karnesi & QR')),
       body: ListView(
-        padding: const EdgeInsets.all(14),
+        padding: EdgeInsets.fromLTRB(
+          14,
+          14,
+          14,
+          MediaQuery.paddingOf(context).bottom + 24,
+        ),
         children: [
           Card(
             child: Padding(
