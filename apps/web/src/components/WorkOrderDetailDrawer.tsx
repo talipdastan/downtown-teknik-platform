@@ -11,13 +11,19 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
-import { createClient } from '@/core/supabase/client';
 import {
   formatDateTime,
   TICKET_STATUS_LABELS,
   WORK_ORDER_STATUS_LABELS,
 } from '@/core/constants';
-import { TicketStatus, WorkOrderStatus } from '@/types/database';
+import {
+  DrawerAttachmentRow,
+  DrawerCommentRow,
+  DrawerHistoryRow,
+  DrawerMaterialRow,
+  fetchWorkOrderDrawerDetail,
+} from '@/features/work-tracking/queries';
+import { WorkOrderStatus } from '@/types/database';
 
 export interface WorkOrderDrawerInput {
   id: string;
@@ -39,40 +45,6 @@ export interface WorkOrderDrawerInput {
   technicians_label: string;
 }
 
-type AttachmentRow = {
-  id: string;
-  file_path: string;
-  file_name: string | null;
-  attachment_type: string;
-  created_at: string;
-  signedUrl?: string | null;
-};
-
-type MaterialRow = {
-  id: string;
-  material_name: string;
-  quantity: number;
-  unit: string;
-  note: string | null;
-  created_at: string;
-};
-
-type CommentRow = {
-  id: string;
-  comment: string;
-  created_at: string;
-  profiles?: { full_name: string } | null;
-};
-
-type HistoryRow = {
-  id: string;
-  old_status: TicketStatus | null;
-  new_status: TicketStatus;
-  change_note: string | null;
-  created_at: string;
-  profiles?: { full_name: string } | null;
-};
-
 export function WorkOrderDetailDrawer({
   item,
   onClose,
@@ -81,10 +53,10 @@ export function WorkOrderDetailDrawer({
   onClose: () => void;
 }) {
   const [loading, setLoading] = useState(false);
-  const [attachments, setAttachments] = useState<AttachmentRow[]>([]);
-  const [materials, setMaterials] = useState<MaterialRow[]>([]);
-  const [comments, setComments] = useState<CommentRow[]>([]);
-  const [history, setHistory] = useState<HistoryRow[]>([]);
+  const [attachments, setAttachments] = useState<DrawerAttachmentRow[]>([]);
+  const [materials, setMaterials] = useState<DrawerMaterialRow[]>([]);
+  const [comments, setComments] = useState<DrawerCommentRow[]>([]);
+  const [history, setHistory] = useState<DrawerHistoryRow[]>([]);
 
   useEffect(() => {
     if (!item) return;
@@ -94,53 +66,15 @@ export function WorkOrderDetailDrawer({
       if (!item) return;
       setLoading(true);
       try {
-        const supabase = createClient();
-        const [attTicketRes, attWoRes, matRes, comRes, histRes] = await Promise.all([
-          supabase
-            .from('attachments')
-            .select('id, file_path, file_name, attachment_type, created_at')
-            .eq('ticket_id', item.ticket_id)
-            .order('created_at', { ascending: true }),
-          supabase
-            .from('attachments')
-            .select('id, file_path, file_name, attachment_type, created_at')
-            .eq('work_order_id', item.id)
-            .order('created_at', { ascending: true }),
-          supabase
-            .from('work_order_materials')
-            .select('id, material_name, quantity, unit, note, created_at')
-            .eq('work_order_id', item.id)
-            .order('created_at', { ascending: true }),
-          supabase
-            .from('comments')
-            .select('id, comment, created_at, profiles(full_name)')
-            .eq('ticket_id', item.ticket_id)
-            .order('created_at', { ascending: true }),
-          supabase
-            .from('status_history')
-            .select('id, old_status, new_status, change_note, created_at, profiles(full_name)')
-            .eq('ticket_id', item.ticket_id)
-            .order('created_at', { ascending: true }),
-        ]);
-
-        const rawAtts = [
-          ...((attTicketRes.data as AttachmentRow[]) ?? []),
-          ...((attWoRes.data as AttachmentRow[]) ?? []),
-        ];
-        const signedAtts = await Promise.all(
-          rawAtts.map(async (a) => {
-            const { data } = await supabase.storage
-              .from('work-attachments')
-              .createSignedUrl(a.file_path, 3600);
-            return { ...a, signedUrl: data?.signedUrl ?? null };
-          })
-        );
-
+        const detail = await fetchWorkOrderDrawerDetail({
+          workOrderId: item.id,
+          ticketId: item.ticket_id,
+        });
         if (!active) return;
-        setAttachments(signedAtts);
-        setMaterials((matRes.data as MaterialRow[]) ?? []);
-        setComments((comRes.data as unknown as CommentRow[]) ?? []);
-        setHistory((histRes.data as unknown as HistoryRow[]) ?? []);
+        setAttachments(detail.attachments);
+        setMaterials(detail.materials);
+        setComments(detail.comments);
+        setHistory(detail.history);
       } catch {
         // Sessiz geç
       } finally {

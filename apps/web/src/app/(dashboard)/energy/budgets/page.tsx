@@ -81,7 +81,7 @@ export default function EnergyBudgetsPage() {
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(GEMINI_STORAGE_KEY);
+      const saved = window.sessionStorage.getItem(GEMINI_STORAGE_KEY);
       if (saved) setGeminiKey(saved);
     } catch {
       // ignore storage errors
@@ -356,10 +356,10 @@ export default function EnergyBudgetsPage() {
     try {
       const trimmed = geminiKey.trim();
       if (trimmed) {
-        localStorage.setItem(GEMINI_STORAGE_KEY, trimmed);
-        setMsg({ type: 'ok', text: 'Gemini API anahtarı kaydedildi.' });
+        window.sessionStorage.setItem(GEMINI_STORAGE_KEY, trimmed);
+        setMsg({ type: 'ok', text: 'Gemini API anahtarı yalnızca bu oturum için kaydedildi.' });
       } else {
-        localStorage.removeItem(GEMINI_STORAGE_KEY);
+        window.sessionStorage.removeItem(GEMINI_STORAGE_KEY);
         setMsg({ type: 'ok', text: 'Gemini API anahtarı temizlendi.' });
       }
       setShowKeyPanel(false);

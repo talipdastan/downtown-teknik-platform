@@ -207,3 +207,108 @@ final paginatedInvoicesProvider = FutureProvider.autoDispose
     offset: safeOffset,
   );
 });
+
+/// Enerji modülü merkezi veri yazma/güncelleme katmanı (UI ekranlarını Supabase'ten ayırır).
+class EnergyRepository {
+  static Future<void> deleteInvoicesByIds(List<String> ids) async {
+    if (ids.isEmpty) return;
+    await Api.client.from('energy_invoices').delete().inFilter('id', ids);
+  }
+
+  static Future<void> insertInvoice(Map<String, dynamic> payload) async {
+    await Api.client.from('energy_invoices').insert(payload);
+  }
+
+  static Future<void> deleteInvoice(String id) async {
+    await Api.client.from('energy_invoices').delete().eq('id', id);
+  }
+
+  static Future<void> upsertBudgets(List<Map<String, dynamic>> rows) async {
+    if (rows.isEmpty) return;
+    await Api.client.from('energy_budgets').upsert(
+          rows,
+          onConflict: 'period_year,period_month,utility_type',
+        );
+  }
+
+  static Future<void> saveBudget({
+    String? id,
+    required Map<String, dynamic> payload,
+  }) async {
+    if (id != null) {
+      await Api.client.from('energy_budgets').update(payload).eq('id', id);
+    } else {
+      await Api.client.from('energy_budgets').upsert(
+            payload,
+            onConflict: 'period_year,period_month,utility_type',
+          );
+    }
+  }
+
+  static Future<void> deleteBudget(String id) async {
+    await Api.client.from('energy_budgets').delete().eq('id', id);
+  }
+
+  static Future<void> updateMeterConfig(
+    String meterId,
+    Map<String, dynamic> payload,
+  ) async {
+    await Api.client.from('meters').update(payload).eq('id', meterId);
+  }
+
+  static Future<void> deleteReading(String readingId) async {
+    await Api.client.from('meter_readings').delete().eq('id', readingId);
+  }
+
+  static Future<void> insertMeter(Map<String, dynamic> payload) async {
+    await Api.client.from('meters').insert(payload);
+  }
+
+  static Future<void> updateMeterMultiplier(
+    String meterId,
+    double multiplier,
+  ) async {
+    await Api.client
+        .from('meters')
+        .update({'multiplier': multiplier})
+        .eq('id', meterId);
+  }
+
+  static Future<void> reorderMeters(List<String> orderedIds) async {
+    try {
+      await Api.client.rpc(
+        'rpc_reorder_meters',
+        params: {'p_meter_ids': orderedIds},
+      );
+    } catch (_) {
+      await Future.wait([
+        for (int i = 0; i < orderedIds.length; i++)
+          Api.client
+              .from('meters')
+              .update({'sort_order': i})
+              .eq('id', orderedIds[i]),
+      ]);
+    }
+  }
+
+  static Future<void> softDeleteMeter(String meterId) async {
+    await Api.client.rpc(
+      'rpc_soft_delete_meter',
+      params: {'p_meter_id': meterId},
+    );
+  }
+
+  static Future<void> restoreMeter(String meterId) async {
+    await Api.client.rpc(
+      'rpc_restore_meter',
+      params: {'p_meter_id': meterId},
+    );
+  }
+
+  static Future<void> permanentlyDeleteMeter(String meterId) async {
+    await Api.client.rpc(
+      'rpc_permanently_delete_meter',
+      params: {'p_meter_id': meterId},
+    );
+  }
+}

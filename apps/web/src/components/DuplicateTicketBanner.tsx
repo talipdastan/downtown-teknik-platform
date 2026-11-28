@@ -2,17 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { createClient } from '@/core/supabase/client';
 import { formatDateTime, TICKET_STATUS_LABELS } from '@/core/constants';
-import { TicketStatus } from '@/types/database';
-
-type DupTicket = {
-  id: string;
-  ticket_number: string | null;
-  status: TicketStatus;
-  description: string;
-  created_at: string;
-};
+import {
+  DuplicateOpenTicket,
+  findDuplicateOpenTickets,
+} from '@/features/work-tracking/queries';
 
 /**
  * Aynı ekipman veya mahal için son 24 saatte açılmış aktif bir arıza varsa
@@ -25,7 +19,7 @@ export function DuplicateTicketBanner({
   equipmentId?: string | null;
   locationId?: string | null;
 }) {
-  const [duplicates, setDuplicates] = useState<DupTicket[]>([]);
+  const [duplicates, setDuplicates] = useState<DuplicateOpenTicket[]>([]);
 
   useEffect(() => {
     const eq = equipmentId?.trim() || null;
@@ -38,13 +32,12 @@ export function DuplicateTicketBanner({
     let active = true;
     const timer = setTimeout(async () => {
       try {
-        const supabase = createClient();
-        const { data, error } = await supabase.rpc('rpc_find_duplicate_open_tickets', {
-          p_equipment_id: eq,
-          p_location_id: loc,
+        const list = await findDuplicateOpenTickets({
+          equipmentId: eq,
+          locationId: loc,
         });
-        if (!active || error) return;
-        setDuplicates((data as DupTicket[]) ?? []);
+        if (!active) return;
+        setDuplicates(list);
       } catch {
         // Migration 0020 henüz uygulanmadıysa sessiz geç
       }

@@ -38,6 +38,9 @@ backups/
 *.apk
 *.aab
 
+# Supabase CLI temp
+supabase/.temp/
+
 # IDE & OS
 .idea/
 .vscode/

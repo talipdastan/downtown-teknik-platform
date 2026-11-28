@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import 'package:avm_tech_platform/core/auth/auth_provider.dart';
-import 'package:avm_tech_platform/core/network/api_client.dart';
 import 'package:avm_tech_platform/core/permissions/permission_models.dart';
 import 'package:avm_tech_platform/core/theme/app_theme.dart';
 import 'package:avm_tech_platform/core/utils/error_utils.dart';
@@ -45,7 +44,7 @@ class MeterDetailScreen extends ConsumerWidget {
     if (confirm != true) return;
 
     try {
-      await Api.client.from('meter_readings').delete().eq('id', reading.id);
+      await EnergyRepository.deleteReading(reading.id);
       ref.invalidate(meterReadingsProvider(meter.id));
       final now = DateTime.now();
       ref.invalidate(energyDashboardProvider((year: now.year, month: now.month)));

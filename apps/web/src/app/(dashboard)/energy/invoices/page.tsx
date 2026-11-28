@@ -123,7 +123,7 @@ export default function EnergyInvoicesPage() {
 
   useEffect(() => {
     try {
-      const saved = window.localStorage.getItem(GEMINI_STORAGE_KEY);
+      const saved = window.sessionStorage.getItem(GEMINI_STORAGE_KEY);
       if (saved) setGeminiKey(saved);
     } catch {
       // ignore
@@ -153,11 +153,11 @@ export default function EnergyInvoicesPage() {
     try {
       const cleaned = geminiKey.trim();
       if (cleaned) {
-        window.localStorage.setItem(GEMINI_STORAGE_KEY, cleaned);
-        setMsg({ type: 'ok', text: 'Gemini API anahtarı tarayıcıya kaydedildi.' });
+        window.sessionStorage.setItem(GEMINI_STORAGE_KEY, cleaned);
+        setMsg({ type: 'ok', text: 'Gemini API anahtarı yalnızca bu oturum için kaydedildi.' });
       } else {
-        window.localStorage.removeItem(GEMINI_STORAGE_KEY);
-        setMsg({ type: 'ok', text: 'Tarayıcıdaki Gemini API anahtarı temizlendi.' });
+        window.sessionStorage.removeItem(GEMINI_STORAGE_KEY);
+        setMsg({ type: 'ok', text: 'Oturumdaki Gemini API anahtarı temizlendi.' });
       }
       setShowKeyPanel(false);
     } catch {

@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import 'package:avm_tech_platform/features/work_tracking/presentation/widgets/work_tracking_widgets.dart';
 import 'package:avm_tech_platform/features/work_tracking/work_tracking_access.dart';
 import 'package:avm_tech_platform/core/theme/app_theme.dart';
-import 'package:avm_tech_platform/core/network/api_client.dart';
 import 'package:avm_tech_platform/core/utils/app_utils.dart';
 import 'package:avm_tech_platform/core/utils/error_utils.dart';
 import 'package:avm_tech_platform/features/work_tracking/utils/labels.dart';
@@ -76,11 +75,12 @@ class _ManagerWorkOrdersScreenState extends ConsumerState<ManagerWorkOrdersScree
 
     setState(() => _busy = true);
     try {
-      await Api.client.rpc('rpc_manager_close_ticket', params: {
-        'p_ticket_id': ticket.id,
-        'p_resolution_note': 'Yönetici tarafından mobil uygulama üzerinden onaylanarak kapatılmıştır.',
-        'p_reopen': false,
-      });
+      await WorkTrackingRepository.managerCloseTicket(
+        ticketId: ticket.id,
+        resolutionNote:
+            'Yönetici tarafından mobil uygulama üzerinden onaylanarak kapatılmıştır.',
+        reopen: false,
+      );
       _refreshAll();
       if (mounted) showAppSnack(context, '${ticket.ticketNumber ?? ''} onaylandı ve kapatıldı.');
     } catch (e) {
@@ -99,11 +99,11 @@ class _ManagerWorkOrdersScreenState extends ConsumerState<ManagerWorkOrdersScree
 
     setState(() => _busy = true);
     try {
-      await Api.client.rpc('rpc_manager_close_ticket', params: {
-        'p_ticket_id': ticket.id,
-        'p_resolution_note': reason,
-        'p_reopen': true,
-      });
+      await WorkTrackingRepository.managerCloseTicket(
+        ticketId: ticket.id,
+        resolutionNote: reason,
+        reopen: true,
+      );
       _refreshAll();
       if (mounted) showAppSnack(context, 'İş emri gerekçesiyle teknisyene iade edildi.');
     } catch (e) {
@@ -501,12 +501,13 @@ class _AssignWorkOrderSheetState extends ConsumerState<_AssignWorkOrderSheet> {
     }
     setState(() => _submitting = true);
     try {
-      await Api.client.rpc('rpc_create_work_order', params: {
-        'p_ticket_id': widget.ticket.id,
-        'p_department_id': _deptId,
-        'p_assigned_user_ids': _techIds.toList(),
-        'p_work_description': _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
-      });
+      await WorkTrackingRepository.createWorkOrder(
+        ticketId: widget.ticket.id,
+        departmentId: _deptId!,
+        assignedUserIds: _techIds.toList(),
+        workDescription:
+            _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
+      );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) showAppSnack(context, friendlyError(e), error: true);

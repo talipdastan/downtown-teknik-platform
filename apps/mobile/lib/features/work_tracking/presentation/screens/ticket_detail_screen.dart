@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:avm_tech_platform/features/work_tracking/presentation/widgets/work_tracking_widgets.dart';
 import 'package:avm_tech_platform/core/theme/app_theme.dart';
-import 'package:avm_tech_platform/core/network/api_client.dart';
 import 'package:avm_tech_platform/features/work_tracking/data/attachment_service.dart';
 import 'package:avm_tech_platform/core/utils/app_utils.dart';
 import 'package:avm_tech_platform/core/utils/error_utils.dart';
@@ -65,11 +64,11 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
 
     setState(() => _confirming = true);
     try {
-      await Api.client.rpc('rpc_manager_close_ticket', params: {
-        'p_ticket_id': t.id,
-        'p_resolution_note': note,
-        'p_reopen': reopen,
-      });
+      await WorkTrackingRepository.managerCloseTicket(
+        ticketId: t.id,
+        resolutionNote: note,
+        reopen: reopen,
+      );
       _refreshAll();
       ref.invalidate(ticketsProvider);
       if (mounted) {

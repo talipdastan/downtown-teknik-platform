@@ -110,7 +110,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
       // Kimliği istemcide üretiyoruz: RLS "select" politikası, INSERT ... RETURNING
       // sırasında yeni satırı göremeyebileceği için geri dönüş değerine güvenmiyoruz.
       final ticketId = const Uuid().v4();
-      await Api.client.from('tickets').insert({
+      await WorkTrackingRepository.insertTicket({
         'id': ticketId,
         'reporter_id': Api.userId,
         'location_id': isOtherLocation ? null : _locationId,

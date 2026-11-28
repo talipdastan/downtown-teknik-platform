@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createServerClient } from '@supabase/ssr';
 
 const FALLBACK_MODELS = [
   'gemini-3.5-flash',
@@ -186,9 +187,34 @@ async function generateWithModel(
 
 export async function POST(req: NextRequest) {
   try {
+    // Oturum doğrulaması: yetkisiz çağrıların sunucu Gemini kotasını tüketmesini engeller
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (supabaseUrl && supabaseAnonKey) {
+      const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+        cookies: {
+          getAll() {
+            return req.cookies.getAll();
+          },
+          setAll() {
+            // API route salt-okunur oturum doğrulaması
+          },
+        },
+      });
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        return NextResponse.json(
+          { error: 'Bu işlem için oturum açmanız gerekiyor.' },
+          { status: 401 }
+        );
+      }
+    }
+
     const body = await req.json();
     const headerKey = req.headers.get('x-gemini-api-key')?.trim();
-    const apiKey = headerKey || process.env.GEMINI_API_KEY?.trim();
+    const apiKey = process.env.GEMINI_API_KEY?.trim() || headerKey;
 
     if (!apiKey) {
       return NextResponse.json(

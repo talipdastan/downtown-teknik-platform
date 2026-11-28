@@ -6,7 +6,6 @@ import 'package:intl/intl.dart';
 import 'package:avm_tech_platform/core/auth/auth_provider.dart';
 import 'package:avm_tech_platform/core/equipment/equipment_model.dart';
 import 'package:avm_tech_platform/core/equipment/equipment_providers.dart';
-import 'package:avm_tech_platform/core/network/api_client.dart';
 import 'package:avm_tech_platform/core/permissions/permission_models.dart';
 import 'package:avm_tech_platform/core/theme/app_theme.dart';
 import 'package:avm_tech_platform/core/utils/error_utils.dart';
@@ -183,15 +182,15 @@ class _EnergyInvoicesScreenState extends ConsumerState<EnergyInvoicesScreen>
               .map((inv) => inv.id)
               .toList();
           if (oldIds.isNotEmpty) {
-            await Api.client.from('energy_invoices').delete().inFilter('id', oldIds);
+            await EnergyRepository.deleteInvoicesByIds(oldIds);
           }
         }
-        await Api.client.from('energy_invoices').insert(
-              d.toInsertJson(
-                enteredById: profile.id,
-                enteredByName: profile.fullName,
-              ),
-            );
+        await EnergyRepository.insertInvoice(
+          d.toInsertJson(
+            enteredById: profile.id,
+            enteredByName: profile.fullName,
+          ),
+        );
       }
 
       ref.invalidate(energyInvoicesProvider(_selectedYear));
@@ -232,10 +231,9 @@ class _EnergyInvoicesScreenState extends ConsumerState<EnergyInvoicesScreen>
       }
 
       final uid = ref.read(authProvider).profile?.id;
-      await Api.client.from('energy_budgets').upsert(
-            parsed.map((b) => b.toUpsertJson(updatedById: uid)).toList(),
-            onConflict: 'period_year,period_month,utility_type',
-          );
+      await EnergyRepository.upsertBudgets(
+        parsed.map((b) => b.toUpsertJson(updatedById: uid)).toList(),
+      );
       ref.invalidate(energyBudgetsProvider(_selectedYear));
         if (mounted) {
         showAppSnack(context, '${parsed.length} aylık bütçe kaydı aktarıldı.');
@@ -270,7 +268,7 @@ class _EnergyInvoicesScreenState extends ConsumerState<EnergyInvoicesScreen>
     );
     if (confirm != true) return;
     try {
-      await Api.client.from('energy_invoices').delete().eq('id', inv.id);
+      await EnergyRepository.deleteInvoice(inv.id);
       ref.invalidate(energyInvoicesProvider(_selectedYear));
       if (mounted) showAppSnack(context, 'Fatura silindi.');
     } catch (e) {
@@ -381,17 +379,10 @@ class _EnergyInvoicesScreenState extends ConsumerState<EnergyInvoicesScreen>
                   if (uid != null) 'updated_by_id': uid,
                 };
                 try {
-                  if (existing?.id != null) {
-                    await Api.client
-                        .from('energy_budgets')
-                        .update(payload)
-                        .eq('id', existing!.id!);
-                  } else {
-                    await Api.client.from('energy_budgets').upsert(
-                          payload,
-                          onConflict: 'period_year,period_month,utility_type',
-                        );
-                  }
+                  await EnergyRepository.saveBudget(
+                    id: existing?.id,
+                    payload: payload,
+                  );
                   if (ctx.mounted) Navigator.pop(ctx, true);
                 } catch (e) {
                   if (ctx.mounted) showAppSnack(ctx, friendlyError(e), error: true);
@@ -443,7 +434,7 @@ class _EnergyInvoicesScreenState extends ConsumerState<EnergyInvoicesScreen>
     );
     if (confirm != true) return;
     try {
-      await Api.client.from('energy_budgets').delete().eq('id', b.id!);
+      await EnergyRepository.deleteBudget(b.id!);
       ref.invalidate(energyBudgetsProvider(_selectedYear));
       if (mounted) showAppSnack(context, 'Bütçe kaydı silindi.');
     } catch (e) {
@@ -528,14 +519,14 @@ class _EnergyInvoicesScreenState extends ConsumerState<EnergyInvoicesScreen>
                   String? opt(TextEditingController c) =>
                       c.text.trim().isEmpty ? null : c.text.trim();
                   try {
-                    await Api.client.from('meters').update({
+                    await EnergyRepository.updateMeterConfig(m.id, {
                       'eic_code': opt(eicCtrl)?.toUpperCase(),
                       'tekil_code': opt(tekilCtrl),
                       'meter_no': opt(meterNoCtrl),
                       'contract_no': opt(contractCtrl),
                       'subscriber_no': opt(subCtrl),
                       'equipment_id': equipmentId,
-                    }).eq('id', m.id);
+                    });
                     if (ctx.mounted) Navigator.pop(ctx, true);
                   } catch (e) {
                     if (ctx.mounted) showAppSnack(ctx, friendlyError(e), error: true);

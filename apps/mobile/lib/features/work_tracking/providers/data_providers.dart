@@ -337,3 +337,78 @@ final paginatedTicketsProvider = FutureProvider.autoDispose
     offset: safeOffset,
   );
 });
+
+/// İş Takip modülü merkezi veri yazma/RPC katmanı (UI ekranlarını Supabase'ten ayırır).
+class WorkTrackingRepository {
+  static Future<void> insertTicket(Map<String, dynamic> payload) async {
+    await Api.client.from('tickets').insert(payload);
+  }
+
+  static Future<void> managerCloseTicket({
+    required String ticketId,
+    required String resolutionNote,
+    required bool reopen,
+  }) async {
+    await Api.client.rpc('rpc_manager_close_ticket', params: {
+      'p_ticket_id': ticketId,
+      'p_resolution_note': resolutionNote,
+      'p_reopen': reopen,
+    });
+  }
+
+  static Future<void> createWorkOrder({
+    required String ticketId,
+    required String departmentId,
+    required List<String> assignedUserIds,
+    String? workDescription,
+  }) async {
+    await Api.client.rpc('rpc_create_work_order', params: {
+      'p_ticket_id': ticketId,
+      'p_department_id': departmentId,
+      'p_assigned_user_ids': assignedUserIds,
+      'p_work_description': workDescription,
+    });
+  }
+
+  static Future<void> technicianStartWork(String workOrderId) async {
+    await Api.client.rpc('rpc_technician_start_work', params: {
+      'p_work_order_id': workOrderId,
+    });
+  }
+
+  static Future<void> technicianPauseWork(
+    String workOrderId,
+    String waitingReason,
+  ) async {
+    await Api.client.rpc('rpc_technician_pause_work', params: {
+      'p_work_order_id': workOrderId,
+      'p_waiting_reason': waitingReason,
+    });
+  }
+
+  static Future<void> addWorkOrderMaterial({
+    required String workOrderId,
+    required String materialName,
+    required double quantity,
+    required String unit,
+    String? recordedBy,
+  }) async {
+    await Api.client.from('work_order_materials').insert({
+      'work_order_id': workOrderId,
+      'material_name': materialName,
+      'quantity': quantity,
+      'unit': unit,
+      'recorded_by': recordedBy ?? Api.userId,
+    });
+  }
+
+  static Future<void> technicianCompleteWork({
+    required String workOrderId,
+    String? note,
+  }) async {
+    await Api.client.rpc('rpc_technician_complete_work', params: {
+      'p_work_order_id': workOrderId,
+      'p_note': note,
+    });
+  }
+}

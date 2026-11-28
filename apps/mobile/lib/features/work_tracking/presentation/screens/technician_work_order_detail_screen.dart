@@ -5,7 +5,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:avm_tech_platform/features/work_tracking/presentation/widgets/work_tracking_widgets.dart';
 import 'package:avm_tech_platform/core/theme/app_theme.dart';
 import 'package:avm_tech_platform/core/database/offline_sync_service.dart';
-import 'package:avm_tech_platform/core/network/api_client.dart';
 import 'package:avm_tech_platform/features/work_tracking/data/attachment_service.dart';
 import 'package:avm_tech_platform/core/utils/error_utils.dart';
 import 'package:avm_tech_platform/features/work_tracking/utils/labels.dart';
@@ -60,7 +59,7 @@ class _TechnicianWorkOrderDetailScreenState
   }
 
   Future<void> _start() => _run(
-        () => Api.client.rpc('rpc_technician_start_work', params: {'p_work_order_id': _id}),
+        () => WorkTrackingRepository.technicianStartWork(_id),
         'İşe başlandı.',
       );
 
@@ -71,10 +70,7 @@ class _TechnicianWorkOrderDetailScreenState
     );
     if (reason == null) return;
     await _run(
-      () => Api.client.rpc('rpc_technician_pause_work', params: {
-        'p_work_order_id': _id,
-        'p_waiting_reason': reason,
-      }),
+      () => WorkTrackingRepository.technicianPauseWork(_id, reason),
       'İş emri beklemeye alındı.',
     );
   }
@@ -86,13 +82,12 @@ class _TechnicianWorkOrderDetailScreenState
     );
     if (input == null) return;
     await _run(
-      () => Api.client.from('work_order_materials').insert({
-        'work_order_id': _id,
-        'material_name': input.name,
-        'quantity': input.quantity,
-        'unit': input.unit,
-        'recorded_by': Api.userId,
-      }),
+      () => WorkTrackingRepository.addWorkOrderMaterial(
+        workOrderId: _id,
+        materialName: input.name,
+        quantity: input.quantity,
+        unit: input.unit,
+      ),
       'Malzeme kaydedildi.',
     );
   }
@@ -137,10 +132,10 @@ class _TechnicianWorkOrderDetailScreenState
         await AttachmentService.upload(file: photo, workOrderId: _id, type: 'after');
         _afterUploaded = true;
       }
-      await Api.client.rpc('rpc_technician_complete_work', params: {
-        'p_work_order_id': _id,
-        'p_note': note.isEmpty ? null : note,
-      });
+      await WorkTrackingRepository.technicianCompleteWork(
+        workOrderId: _id,
+        note: note.isEmpty ? null : note,
+      );
       _afterPhoto = null;
       _afterUploaded = false;
       _noteCtrl.clear();

@@ -6,7 +6,6 @@ import 'package:intl/intl.dart';
 import 'package:avm_tech_platform/core/auth/auth_provider.dart';
 import 'package:avm_tech_platform/core/equipment/equipment_model.dart';
 import 'package:avm_tech_platform/core/equipment/equipment_providers.dart';
-import 'package:avm_tech_platform/core/network/api_client.dart';
 import 'package:avm_tech_platform/core/permissions/permission_models.dart';
 import 'package:avm_tech_platform/core/theme/app_theme.dart';
 import 'package:avm_tech_platform/core/utils/error_utils.dart';
@@ -113,7 +112,7 @@ class _MeterListScreenState extends ConsumerState<MeterListScreen> {
                       double.tryParse(multCtrl.text.trim().replaceAll(',', '.'));
                   if (name.isEmpty || mult == null || mult <= 0) return;
                   try {
-                    await Api.client.from('meters').insert({
+                    await EnergyRepository.insertMeter({
                       'name': name,
                       'meter_type': widget.meterType,
                       'category': category,
@@ -165,9 +164,7 @@ class _MeterListScreenState extends ConsumerState<MeterListScreen> {
               final val = double.tryParse(ctrl.text.trim().replaceAll(',', '.'));
               if (val == null || val <= 0) return;
               try {
-                await Api.client
-                    .from('meters')
-                    .update({'multiplier': val}).eq('id', meter.id);
+                await EnergyRepository.updateMeterMultiplier(meter.id, val);
                 if (ctx.mounted) Navigator.pop(ctx, true);
               } catch (e) {
                 if (ctx.mounted) {
@@ -189,21 +186,7 @@ class _MeterListScreenState extends ConsumerState<MeterListScreen> {
   Future<void> _saveReorder(List<MeterModel> list) async {
     try {
       final meterIds = list.map((m) => m.id).toList();
-      try {
-        await Api.client.rpc(
-          'rpc_reorder_meters',
-          params: {'p_meter_ids': meterIds},
-        );
-      } catch (_) {
-        // Migration 0018 henüz uygulanmadıysa geriye uyumlu paralel güncelleme
-        await Future.wait([
-          for (int i = 0; i < list.length; i++)
-            Api.client
-                .from('meters')
-                .update({'sort_order': i})
-                .eq('id', list[i].id),
-        ]);
-      }
+      await EnergyRepository.reorderMeters(meterIds);
       ref.invalidate(metersProvider(widget.meterType));
     } catch (e) {
       if (mounted) showAppSnack(context, friendlyError(e), error: true);
@@ -243,10 +226,7 @@ class _MeterListScreenState extends ConsumerState<MeterListScreen> {
     if (confirm != true) return;
 
     try {
-      await Api.client.rpc(
-        'rpc_soft_delete_meter',
-        params: {'p_meter_id': meter.id},
-      );
+      await EnergyRepository.softDeleteMeter(meter.id);
       _invalidateMeterViews();
       if (mounted) {
         showAppSnack(
@@ -519,10 +499,7 @@ class _MeterTrashSheetState extends ConsumerState<_MeterTrashSheet> {
   Future<void> _restore(TrashedMeterItem item) async {
     setState(() => _busy = true);
     try {
-      await Api.client.rpc(
-        'rpc_restore_meter',
-        params: {'p_meter_id': item.id},
-      );
+      await EnergyRepository.restoreMeter(item.id);
       widget.onChanged();
       if (mounted) {
         showAppSnack(
@@ -562,10 +539,7 @@ class _MeterTrashSheetState extends ConsumerState<_MeterTrashSheet> {
 
     setState(() => _busy = true);
     try {
-      await Api.client.rpc(
-        'rpc_permanently_delete_meter',
-        params: {'p_meter_id': item.id},
-      );
+      await EnergyRepository.permanentlyDeleteMeter(item.id);
       widget.onChanged();
       if (mounted) {
         showAppSnack(context, '${item.name} kalıcı olarak silindi.');

@@ -84,6 +84,8 @@ const CORE_DECOUPLED_PAGES = [
   'src/app/(dashboard)/work-tracking/work-orders/page.tsx',
   'src/app/(dashboard)/work-tracking/review/page.tsx',
   'src/app/(dashboard)/work-tracking/reports/page.tsx',
+  'src/components/WorkOrderDetailDrawer.tsx',
+  'src/components/DuplicateTicketBanner.tsx',
 ];
 
 test('Enerji Takip ve İş Takip sayfaları doğrudan supabase.from/rpc çağırmamalı (queries.ts katmanı zorunlu)', () => {

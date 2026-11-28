@@ -779,3 +779,124 @@ export async function deleteWorkOrder(workOrderId: string): Promise<void> {
   const { error } = await supabase.from('work_orders').delete().eq('id', workOrderId);
   if (error) throw error;
 }
+
+export type DuplicateOpenTicket = {
+  id: string;
+  ticket_number: string | null;
+  status: TicketStatus;
+  description: string;
+  created_at: string;
+};
+
+export async function findDuplicateOpenTickets(params: {
+  equipmentId: string | null;
+  locationId: string | null;
+}): Promise<DuplicateOpenTicket[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc('rpc_find_duplicate_open_tickets', {
+    p_equipment_id: params.equipmentId,
+    p_location_id: params.locationId,
+  });
+  if (error) throw error;
+  return (data as DuplicateOpenTicket[]) ?? [];
+}
+
+export type DrawerAttachmentRow = {
+  id: string;
+  file_path: string;
+  file_name: string | null;
+  attachment_type: string;
+  created_at: string;
+  signedUrl?: string | null;
+};
+
+export type DrawerMaterialRow = {
+  id: string;
+  material_name: string;
+  quantity: number;
+  unit: string;
+  note: string | null;
+  created_at: string;
+};
+
+export type DrawerCommentRow = {
+  id: string;
+  comment: string;
+  created_at: string;
+  profiles?: { full_name: string } | null;
+};
+
+export type DrawerHistoryRow = {
+  id: string;
+  old_status: TicketStatus | null;
+  new_status: TicketStatus;
+  change_note: string | null;
+  created_at: string;
+  profiles?: { full_name: string } | null;
+};
+
+export async function fetchWorkOrderDrawerDetail(params: {
+  workOrderId: string;
+  ticketId: string;
+}): Promise<{
+  attachments: DrawerAttachmentRow[];
+  materials: DrawerMaterialRow[];
+  comments: DrawerCommentRow[];
+  history: DrawerHistoryRow[];
+}> {
+  const supabase = createClient();
+  const [attTicketRes, attWoRes, matRes, comRes, histRes] = await Promise.all([
+    supabase
+      .from('attachments')
+      .select('id, file_path, file_name, attachment_type, created_at')
+      .eq('ticket_id', params.ticketId)
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('attachments')
+      .select('id, file_path, file_name, attachment_type, created_at')
+      .eq('work_order_id', params.workOrderId)
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('work_order_materials')
+      .select('id, material_name, quantity, unit, note, created_at')
+      .eq('work_order_id', params.workOrderId)
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('comments')
+      .select('id, comment, created_at, profiles(full_name)')
+      .eq('ticket_id', params.ticketId)
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('status_history')
+      .select('id, old_status, new_status, change_note, created_at, profiles(full_name)')
+      .eq('ticket_id', params.ticketId)
+      .order('created_at', { ascending: true }),
+  ]);
+
+  const rawAtts = [
+    ...((attTicketRes.data as DrawerAttachmentRow[]) ?? []),
+    ...((attWoRes.data as DrawerAttachmentRow[]) ?? []),
+  ];
+  let attachments: DrawerAttachmentRow[] = rawAtts;
+  if (rawAtts.length > 0) {
+    const paths = Array.from(new Set(rawAtts.map((a) => a.file_path)));
+    const { data: signedData } = await supabase.storage
+      .from('work-attachments')
+      .createSignedUrls(paths, 3600);
+    const urlMap = new Map<string, string>();
+    for (const s of signedData ?? []) {
+      if (s.path && s.signedUrl) urlMap.set(s.path, s.signedUrl);
+    }
+    attachments = rawAtts.map((a) => ({
+      ...a,
+      signedUrl: urlMap.get(a.file_path) ?? null,
+    }));
+  }
+
+  return {
+    attachments,
+    materials: (matRes.data as DrawerMaterialRow[]) ?? [],
+    comments: (comRes.data as unknown as DrawerCommentRow[]) ?? [],
+    history: (histRes.data as unknown as DrawerHistoryRow[]) ?? [],
+  };
+}
