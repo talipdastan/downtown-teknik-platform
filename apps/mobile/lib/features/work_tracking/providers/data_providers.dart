@@ -87,7 +87,7 @@ final ticketHistoryProvider =
     FutureProvider.autoDispose.family<List<StatusHistoryModel>, String>((ref, id) async {
   final data = await Api.client
       .from('status_history')
-      .select('*, profiles(full_name)')
+      .select('id, ticket_id, work_order_id, old_status, new_status, changed_by, note, created_at, profiles(full_name)')
       .eq('ticket_id', id)
       .order('created_at');
   return _rows(data).map((r) => StatusHistoryModel.fromJson(r)).toList();
@@ -97,7 +97,7 @@ final ticketCommentsProvider =
     FutureProvider.autoDispose.family<List<CommentModel>, String>((ref, id) async {
   final data = await Api.client
       .from('comments')
-      .select('*, profiles(full_name)')
+      .select('id, ticket_id, work_order_id, user_id, comment, created_at, profiles(full_name)')
       .eq('ticket_id', id)
       .order('created_at');
   return _rows(data).map((r) => CommentModel.fromJson(r)).toList();
@@ -176,23 +176,35 @@ class TechnicianOption {
 }
 
 final activeDepartmentsProvider = FutureProvider.autoDispose<List<LookupItem>>((ref) async {
-  final data = await Api.client
-      .from('departments')
-      .select('id, name')
-      .eq('is_active', true)
-      .order('name');
-  return _rows(data).map((r) => LookupItem.fromJson(r)).toList();
+  final rows = await LocalLookupCache.instance.readThrough(
+    key: 'active_departments',
+    fetchRemote: () async {
+      final data = await Api.client
+          .from('departments')
+          .select('id, name')
+          .eq('is_active', true)
+          .order('name');
+      return _rows(data);
+    },
+  );
+  return rows.map((r) => LookupItem.fromJson(r)).toList();
 });
 
 final approvedTechniciansProvider =
     FutureProvider.autoDispose<List<TechnicianOption>>((ref) async {
-  final data = await Api.client
-      .from('profiles')
-      .select('id, full_name, department_id')
-      .inFilter('role', ['technician', 'team_lead'])
-      .eq('approval_status', 'approved')
-      .order('full_name');
-  return _rows(data).map((r) => TechnicianOption.fromJson(r)).toList();
+  final rows = await LocalLookupCache.instance.readThrough(
+    key: 'approved_technicians',
+    fetchRemote: () async {
+      final data = await Api.client
+          .from('profiles')
+          .select('id, full_name, department_id')
+          .inFilter('role', ['technician', 'team_lead'])
+          .eq('approval_status', 'approved')
+          .order('full_name');
+      return _rows(data);
+    },
+  );
+  return rows.map((r) => TechnicianOption.fromJson(r)).toList();
 });
 
 final pendingAssignmentTicketsProvider =

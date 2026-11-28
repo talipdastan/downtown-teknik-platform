@@ -27,7 +27,7 @@ final metersProvider =
     fetchRemote: () async {
       var q = Api.client
           .from('meters')
-          .select('*, equipments(code, name)')
+          .select('id, legacy_id, name, meter_type, category, multiplier, sort_order, meter_no, contract_no, eic_code, tekil_code, subscriber_no, region, equipment_id, location_id, is_active, deleted_at, deleted_by, equipments(code, name)')
           .eq('is_active', true)
           .isFilter('deleted_at', null);
       if (meterType != null) {
@@ -55,7 +55,7 @@ final meterDetailProvider =
     FutureProvider.autoDispose.family<MeterModel, String>((ref, meterId) async {
   final data = await Api.client
       .from('meters')
-      .select('*, equipments(code, name)')
+      .select('id, legacy_id, name, meter_type, category, multiplier, sort_order, meter_no, contract_no, eic_code, tekil_code, subscriber_no, region, equipment_id, location_id, is_active, deleted_at, deleted_by, equipments(code, name)')
       .eq('id', meterId)
       .single();
   return MeterModel.fromJson(Map<String, dynamic>.from(data));

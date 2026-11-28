@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import Link from 'next/link';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Camera, CheckCircle2, MessageSquare, RotateCcw } from 'lucide-react';
 import { createClient } from '@/core/supabase/client';
 import { useDebouncedRealtime } from '@/core/hooks/useDebouncedRealtime';
@@ -46,15 +47,14 @@ export default function WorkTrackingReviewPage() {
   const { profile } = useDashboardAuth();
   const canApprove = hasModulePermission(profile, 'work_tracking', 'approve');
 
-  const [items, setItems] = useState<ReviewItem[]>([]);
+  const queryClient = useQueryClient();
   const [reasons, setReasons] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
-  const loadPending = useCallback(async () => {
-    setLoading(true);
-    try {
+  const { data: items = [], isLoading: loading } = useQuery({
+    queryKey: ['wt', 'review'],
+    queryFn: async () => {
       const supabase = createClient();
       const { data, error } = await supabase
         .from('work_orders')
@@ -68,10 +68,7 @@ export default function WorkTrackingReviewPage() {
       if (error) throw error;
 
       const raw = (data as unknown as Omit<ReviewItem, 'photos' | 'notes'>[]) ?? [];
-      if (raw.length === 0) {
-        setItems([]);
-        return;
-      }
+      if (raw.length === 0) return [];
 
       const ticketIds = Array.from(new Set(raw.map((r) => r.ticket_id)));
       const woIds = raw.map((r) => r.id);
@@ -115,34 +112,25 @@ export default function WorkTrackingReviewPage() {
       const allComments =
         (commRes.data as unknown as Array<CommentItem & { ticket_id: string }>) ?? [];
 
-      setItems(
-        raw.map((r) => {
-          const itemPhotos = allAtts
-            .filter((a) => a.ticket_id === r.ticket_id || a.work_order_id === r.id)
-            .map((a) => ({
-              id: a.id,
-              file_path: a.file_path,
-              file_name: a.file_name,
-              attachment_type: a.attachment_type,
-              signedUrl: signedMap.get(a.file_path),
-            }));
-          const itemNotes = allComments.filter((c) => c.ticket_id === r.ticket_id);
-          return { ...r, photos: itemPhotos, notes: itemNotes };
-        })
-      );
-    } catch (err) {
-      setMsg({
-        type: 'err',
-        text: err instanceof Error ? err.message : 'Onay bekleyen kayıtlar yüklenemedi.',
+      return raw.map((r) => {
+        const itemPhotos = allAtts
+          .filter((a) => a.ticket_id === r.ticket_id || a.work_order_id === r.id)
+          .map((a) => ({
+            id: a.id,
+            file_path: a.file_path,
+            file_name: a.file_name,
+            attachment_type: a.attachment_type,
+            signedUrl: signedMap.get(a.file_path),
+          }));
+        const itemNotes = allComments.filter((c) => c.ticket_id === r.ticket_id);
+        return { ...r, photos: itemPhotos, notes: itemNotes };
       });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+  });
 
-  useEffect(() => {
-    loadPending();
-  }, [loadPending]);
+  const loadPending = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ['wt', 'review'] });
+  }, [queryClient]);
 
   useDebouncedRealtime({
     channelName: 'wt-review-live',

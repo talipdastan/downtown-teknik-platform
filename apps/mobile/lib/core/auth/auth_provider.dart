@@ -91,7 +91,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       final row = await client
           .from('profiles')
-          .select('*, departments(name)')
+          .select('id, full_name, phone, role, custom_role, approval_status, department_id, permissions, created_at, departments(name)')
           .eq('id', userId)
           .single();
 

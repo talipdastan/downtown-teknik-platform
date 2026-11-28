@@ -39,6 +39,11 @@ jobs:
           echo "HTTP Status: $HTTP_CODE"
           echo "Response: $BODY"
 
+          if [ "$HTTP_CODE" -eq 404 ]; then
+            echo "::warning::purge-expired-photos Edge Function henuz Supabase'e deploy edilmedi (HTTP 404). Web paneldeki '15 Gunluk Fotograf Temizligi' butonu aktif."
+            exit 0
+          fi
+
           if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
             echo "::error::purge-expired-photos basarisiz oldu (HTTP $HTTP_CODE)"
             exit 1

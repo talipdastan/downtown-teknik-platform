@@ -19,6 +19,7 @@ import {
 import { createClient } from '@/core/supabase/client';
 import {
   DEPARTMENT_SELECT,
+  EQUIPMENT_SELECT,
   METER_SELECT,
   PROFILE_SELECT,
 } from '@/core/supabase/selects';
@@ -171,7 +172,7 @@ export default function AdminEquipmentsPage() {
       const [eqRes, dRes, lRes] = await Promise.all([
         supabase
           .from('equipments')
-          .select('*, departments(name), locations(name, floors(name))')
+          .select(`${EQUIPMENT_SELECT}, departments(name), locations(name, floors(name))`)
           .order('code'),
         supabase.from('departments').select(DEPARTMENT_SELECT).eq('is_active', true).order('name'),
         supabase

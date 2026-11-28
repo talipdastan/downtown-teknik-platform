@@ -13,7 +13,7 @@ final _allUsersProvider =
     FutureProvider.autoDispose<List<ProfileModel>>((ref) async {
   final data = await Api.client
       .from('profiles')
-      .select('*, departments(name)')
+      .select('id, full_name, phone, role, custom_role, approval_status, department_id, permissions, created_at, departments(name)')
       .order('created_at', ascending: false);
   return (data as List)
       .map((e) => ProfileModel.fromJson(Map<String, dynamic>.from(e as Map)))

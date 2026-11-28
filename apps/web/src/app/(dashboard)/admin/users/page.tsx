@@ -154,7 +154,7 @@ export default function AdminUsersPage() {
       const [pRes, dRes, crRes] = await Promise.all([
         supabase
           .from('profiles')
-          .select('*, departments(name)')
+          .select(`${PROFILE_SELECT}, departments(name)`)
           .order('created_at', { ascending: false }),
         supabase
           .from('departments')

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BarChart3,
   Droplets,
@@ -62,10 +63,8 @@ export default function EnergyBudgetsPage() {
   const [chartMetric, setChartMetric] = useState<ChartMetric>('tl');
   const [hoveredMonth, setHoveredMonth] = useState<number | null>(null);
 
-  const [budgets, setBudgets] = useState<EnergyBudget[]>([]);
-  const [invoices, setInvoices] = useState<EnergyInvoice[]>([]);
+  const queryClient = useQueryClient();
   const [showReportWizard, setShowReportWizard] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
@@ -88,9 +87,10 @@ export default function EnergyBudgetsPage() {
     }
   }, []);
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
-    try {
+  const { data: budgetData, isLoading: loading } = useQuery({
+    queryKey: ['energy', 'budgets', year],
+    placeholderData: (prev) => prev,
+    queryFn: async () => {
       const supabase = createClient();
       const [bRes, iRes] = await Promise.all([
         supabase
@@ -102,21 +102,19 @@ export default function EnergyBudgetsPage() {
         supabase.from('energy_invoices').select(ENERGY_INVOICE_SELECT).eq('period_year', year),
       ]);
       if (bRes.error) throw bRes.error;
-      setBudgets((bRes.data as EnergyBudget[]) ?? []);
-      if (iRes.data) setInvoices(iRes.data as EnergyInvoice[]);
-    } catch (err) {
-      setMsg({
-        type: 'err',
-        text: err instanceof Error ? err.message : 'Bütçe verisi alınamadı.',
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [year]);
+      return {
+        budgets: (bRes.data as EnergyBudget[]) ?? [],
+        invoices: (iRes.data as EnergyInvoice[]) ?? [],
+      };
+    },
+  });
 
-  useEffect(() => {
-    loadAll();
-  }, [loadAll]);
+  const budgets = useMemo(() => budgetData?.budgets ?? [], [budgetData]);
+  const invoices = useMemo(() => budgetData?.invoices ?? [], [budgetData]);
+
+  const loadAll = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['energy', 'budgets', year] });
+  };
 
   const fmtTl = (n: number) =>
     new Intl.NumberFormat('tr-TR', {
