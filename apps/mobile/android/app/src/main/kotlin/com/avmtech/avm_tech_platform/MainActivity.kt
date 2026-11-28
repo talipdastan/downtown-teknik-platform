@@ -65,6 +65,34 @@ class MainActivity : FlutterActivity() {
                     "getSupportedAbis" -> {
                         result.success(Build.SUPPORTED_ABIS.toList())
                     }
+                    "getInstalledVersion" -> {
+                        try {
+                            val pm = applicationContext.packageManager
+                            val pkgInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                pm.getPackageInfo(
+                                    applicationContext.packageName,
+                                    android.content.pm.PackageManager.PackageInfoFlags.of(0)
+                                )
+                            } else {
+                                @Suppress("DEPRECATION")
+                                pm.getPackageInfo(applicationContext.packageName, 0)
+                            }
+                            val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                                pkgInfo.longVersionCode.toInt()
+                            } else {
+                                @Suppress("DEPRECATION")
+                                pkgInfo.versionCode
+                            }
+                            result.success(
+                                mapOf(
+                                    "version" to (pkgInfo.versionName ?: ""),
+                                    "buildNumber" to versionCode
+                                )
+                            )
+                        } catch (e: Exception) {
+                            result.error("VERSION_ERROR", e.localizedMessage, null)
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }

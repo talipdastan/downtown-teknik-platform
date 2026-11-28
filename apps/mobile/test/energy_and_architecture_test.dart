@@ -126,5 +126,26 @@ void main() {
         );
       }
     });
+
+    test('pubspec.yaml sürümü ile AppUpdateService varsayılan sürümü birebir eşleşmeli', () {
+      final pubspec = File('pubspec.yaml').readAsStringSync();
+      final verMatch = RegExp(r'^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+)', multiLine: true)
+          .firstMatch(pubspec);
+      expect(verMatch, isNotNull, reason: 'pubspec.yaml version satırı okunamadı');
+      final expectedVer = verMatch!.group(1)!;
+      final expectedBuild = verMatch.group(2)!;
+
+      final updater = File('lib/core/update/app_update_service.dart').readAsStringSync();
+      expect(
+        updater.contains("defaultValue: '$expectedVer'"),
+        isTrue,
+        reason: 'app_update_service.dart currentVersion defaultValue ($expectedVer) pubspec.yaml ile uyuşmuyor',
+      );
+      expect(
+        updater.contains('defaultValue: $expectedBuild,'),
+        isTrue,
+        reason: 'app_update_service.dart currentBuildNumber defaultValue ($expectedBuild) pubspec.yaml ile uyuşmuyor',
+      );
+    });
   });
 }

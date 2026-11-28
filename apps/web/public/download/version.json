@@ -1,7 +1,7 @@
 {
-  "version": "1.3.5",
-  "buildNumber": 13,
-  "releaseDate": "2026-11-28T16:40:00+03:00",
+  "version": "1.3.6",
+  "buildNumber": 14,
+  "releaseDate": "2026-11-28T17:16:00+03:00",
   "apkUrl": "https://github.com/talipdastan/downtown-teknik-platform/releases/latest/download/downtown-teknik.apk",
   "apkUrls": {
     "arm64-v8a": "https://github.com/talipdastan/downtown-teknik-platform/releases/latest/download/downtown-teknik-arm64-v8a.apk",
@@ -10,9 +10,7 @@
   },
   "mandatory": false,
   "releaseNotes": [
-    "Enerji Takip ve İş Takip ekranlarında 0 wildcard sorgu ve merkezi Repository katmanı ile daha hızlı ve kararlı veri akışı sağlandı.",
-    "Departman ve teknisyen listeleri çevrimdışı önbelleğe (LocalLookupCache) bağlandı; sahada internet zayıfken de anında açılır.",
-    "Bütçe sekmesi bağımsız bileşene ayrılarak Faturalar & Bütçe ekranının akıcılığı artırıldı.",
-    "Web panelinde sunucu taraflı oturum middleware'i, Türkçe hata/404 sayfaları ve oturum korumalı Gemini PDF analiz güvenliği devreye alındı."
+    "Güncelleme sonrası tekrar güncelleme uyarısı çıkmasına neden olan sürüm okuma hatası kalıcı olarak giderildi (gerçek Android PackageInfo sürümü okunur).",
+    "Enerji Takip ve İş Takip ekranlarında 0 wildcard sorgu, departman/teknisyen çevrimdışı önbellek ve merkezi Repository katmanı."
   ]
 }

@@ -70,12 +70,41 @@ class AppUpdateService {
 
   static const String currentVersion = String.fromEnvironment(
     'APP_VERSION',
-    defaultValue: '1.3.4',
+    defaultValue: '1.3.6',
   );
   static const int currentBuildNumber = int.fromEnvironment(
     'APP_BUILD_NUMBER',
-    defaultValue: 12,
+    defaultValue: 14,
   );
+
+  static ({String version, int buildNumber})? _cachedInstalledVersion;
+
+  /// Cihazda gerçekten kurulu olan Android sürüm bilgisini (`PackageInfo`) okur.
+  /// Böylece `--dart-define` unutulsa bile sonsuz güncelleme döngüsü yaşanmaz.
+  static Future<({String version, int buildNumber})> getInstalledVersion() async {
+    if (_cachedInstalledVersion != null) return _cachedInstalledVersion!;
+    if (!kIsWeb) {
+      try {
+        final raw = await _channel
+            .invokeMapMethod<String, dynamic>('getInstalledVersion');
+        if (raw != null) {
+          final v = (raw['version'] ?? '').toString().trim();
+          final b = (raw['buildNumber'] as num?)?.toInt() ?? 0;
+          if (v.isNotEmpty && b > 0) {
+            _cachedInstalledVersion = (version: v, buildNumber: b);
+            return _cachedInstalledVersion!;
+          }
+        }
+      } catch (_) {
+        // Test ortamı veya desteklenmeyen platformda compile-time sabitine düş
+      }
+    }
+    _cachedInstalledVersion = (
+      version: currentVersion,
+      buildNumber: currentBuildNumber,
+    );
+    return _cachedInstalledVersion!;
+  }
 
   /// 1) Bulut Güncelleme Kanalı (4.5G / Mobil Veri / Her Yerden Erişilebilir)
   static const String githubVersionJsonUrl =
@@ -267,6 +296,7 @@ class AppUpdateService {
     if (patchedViaShorebird) return;
 
     // 2) Tam sürüm (buildNumber) kontrolü yap (Bulut GitHub + Yerel Sunucu)
+    final installed = await getInstalledVersion();
     final info = await fetchRemoteInfo();
     if (!context.mounted) return;
 
@@ -276,7 +306,7 @@ class AppUpdateService {
         if (context.mounted) {
           showAppSnack(
             context,
-            'Uygulamanız güncel (v$currentVersion #$currentBuildNumber${patchNo != null ? ' · OTA Yama #$patchNo' : ''}).',
+            'Uygulamanız güncel (v${installed.version} #${installed.buildNumber}${patchNo != null ? ' · OTA Yama #$patchNo' : ''}).',
           );
         }
       }
@@ -286,6 +316,8 @@ class AppUpdateService {
     final hasNewBuild = isNewerVersion(
       remoteVersion: info.version,
       remoteBuild: info.buildNumber,
+      localVersion: installed.version,
+      localBuild: installed.buildNumber,
     );
 
     if (!hasNewBuild) {
@@ -294,7 +326,7 @@ class AppUpdateService {
         if (context.mounted) {
           showAppSnack(
             context,
-            'Uygulamanız en güncel sürümde (v$currentVersion #$currentBuildNumber${patchNo != null ? ' · OTA Yama #$patchNo' : ''}).',
+            'Uygulamanız en güncel sürümde (v${installed.version} #${installed.buildNumber}${patchNo != null ? ' · OTA Yama #$patchNo' : ''}).',
           );
         }
       }

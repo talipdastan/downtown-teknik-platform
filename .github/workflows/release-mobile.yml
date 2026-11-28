@@ -104,15 +104,24 @@ jobs:
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           UPDATE_SERVER_URL: ${{ secrets.UPDATE_SERVER_URL || 'http://10.16.19.19' }}
         run: |
+          PUBSPEC_VER=$(grep -E '^version:' pubspec.yaml | head -n1 | awk '{print $2}' | tr -d '\r')
+          APP_VERSION="${PUBSPEC_VER%%+*}"
+          APP_BUILD_NUMBER="${PUBSPEC_VER##*+}"
+          echo "Building release APK for v${APP_VERSION} (+${APP_BUILD_NUMBER})"
+
           flutter build apk --release --split-per-abi \
             --dart-define=SUPABASE_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
-            --dart-define=UPDATE_SERVER_URL="$UPDATE_SERVER_URL"
+            --dart-define=UPDATE_SERVER_URL="$UPDATE_SERVER_URL" \
+            --dart-define=APP_VERSION="$APP_VERSION" \
+            --dart-define=APP_BUILD_NUMBER="$APP_BUILD_NUMBER"
 
           flutter build apk --release \
             --dart-define=SUPABASE_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
-            --dart-define=UPDATE_SERVER_URL="$UPDATE_SERVER_URL"
+            --dart-define=UPDATE_SERVER_URL="$UPDATE_SERVER_URL" \
+            --dart-define=APP_VERSION="$APP_VERSION" \
+            --dart-define=APP_BUILD_NUMBER="$APP_BUILD_NUMBER"
 
           mkdir -p dist
           cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/downtown-teknik-arm64-v8a.apk
