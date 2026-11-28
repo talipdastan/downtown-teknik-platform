@@ -2,6 +2,9 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Projede next/image kullanılmıyor; görsel optimizasyon uç noktası (/_next/image)
+  // Next.js 14 görsel optimizer güvenlik açıklarına karşı kapatılır.
+  images: { unoptimized: true },
   async headers() {
     return [
       {

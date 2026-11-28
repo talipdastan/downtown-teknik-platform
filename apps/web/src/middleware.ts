@@ -57,10 +57,13 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = '/login';
-    loginUrl.searchParams.set('next', pathname);
-    return NextResponse.redirect(loginUrl);
+    // nginx arkasında Host başlığı `localhost:3000` olarak geldiği için mutlak URL yerine
+    // göreli Location kullanılır; tarayıcı bunu her zaman gerçek adrese göre çözer.
+    const loginPath = `/login?next=${encodeURIComponent(pathname)}`;
+    return new NextResponse(null, {
+      status: 307,
+      headers: { Location: loginPath },
+    });
   }
 
   return response;
