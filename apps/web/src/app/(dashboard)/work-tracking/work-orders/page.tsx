@@ -20,7 +20,16 @@ import {
   UserPlus,
   X,
 } from 'lucide-react';
-import { createClient } from '@/core/supabase/client';
+import {
+  createWorkOrder,
+  deleteWorkOrder,
+  fetchWorkOrdersPageData,
+  purgeExpiredClosedPhotos,
+  technicianCompleteWork,
+  technicianPauseWork,
+  technicianStartWork,
+  updateWorkOrder,
+} from '@/features/work-tracking/queries';
 import { useDebouncedRealtime } from '@/core/hooks/useDebouncedRealtime';
 import {
   WorkOrderDetailDrawer,
@@ -37,7 +46,6 @@ import {
 } from '@/core/constants';
 import { useDashboardAuth } from '@/core/DashboardContext';
 import { hasModulePermission } from '@/core/permissions';
-import { compressImageForUpload } from '@/core/utils/image-compress';
 import {
   exportExcelXml,
   exportPrintablePdf,
@@ -46,14 +54,11 @@ import {
 import { WorkOrderStatus } from '@/types/database';
 import {
   calcDurationLabel,
-  Dept,
-  OpenTicket,
   resolveCompleterName,
   resolveLocationLabel,
   resolveRequesterName,
   resolveRequestOpenDate,
   StatusTab,
-  Tech,
   toIsoDate,
   woBadgeClass,
   WorkOrderRow,
@@ -106,60 +111,7 @@ export default function WorkTrackingWorkOrdersPage() {
   const { data: woPageData, isLoading: loading } = useQuery({
     queryKey: ['wt', 'work-orders', { startDate, endDate, orderLimit }],
     placeholderData: (prev) => prev,
-    queryFn: async () => {
-      const supabase = createClient();
-
-      // Tarih aralığı filtresi sunucu tarafında (PostgreSQL) uygulanır;
-      // 300+ kayıt sonrası eski tarih aralıklarında sessiz kırpılma olmaz.
-      let woQuery = supabase
-        .from('work_orders')
-        .select(
-          'id, ticket_id, department_id, status, work_description, waiting_reason, created_at, started_at, completed_at, completed_by, completer:profiles!work_orders_completed_by_fkey(full_name), tickets(ticket_number, description, priority, created_at, resolved_at, closed_at, custom_location, locations(name, floors(name)), profiles!tickets_reporter_id_fkey(full_name)), departments(name), equipments(code, name), work_order_assignments(user_id, profiles!work_order_assignments_user_id_fkey(full_name))',
-          { count: 'exact' }
-        )
-        .order('created_at', { ascending: false })
-        .limit(orderLimit);
-
-      if (startDate) {
-        woQuery = woQuery.gte('created_at', `${startDate}T00:00:00`);
-      }
-      if (endDate) {
-        woQuery = woQuery.lte('created_at', `${endDate}T23:59:59`);
-      }
-
-      const [tRes, dRes, techRes, woRes, wlRes] = await Promise.all([
-        supabase
-          .from('tickets')
-          .select('id, ticket_number, description, priority, status')
-          .in('status', ['new', 'under_review'])
-          .order('created_at', { ascending: false })
-          .limit(100),
-        supabase.from('departments').select('id, name').eq('is_active', true).order('name'),
-        supabase
-          .from('profiles')
-          .select('id, full_name, department_id')
-          .in('role', ['technician', 'team_lead'])
-          .eq('approval_status', 'approved')
-          .order('full_name'),
-        woQuery,
-        supabase.rpc('rpc_get_technician_workloads'),
-      ]);
-      if (woRes.error) throw woRes.error;
-      const workloads: Record<string, number> = {};
-      if (!wlRes.error && Array.isArray(wlRes.data)) {
-        for (const r of wlRes.data as Array<{ user_id: string; active_count: number }>) {
-          workloads[r.user_id] = Number(r.active_count ?? 0);
-        }
-      }
-      return {
-        tickets: (tRes.data as OpenTicket[]) ?? [],
-        depts: (dRes.data as Dept[]) ?? [],
-        techs: (techRes.data as Tech[]) ?? [],
-        orders: (woRes.data as unknown as WorkOrderRow[]) ?? [],
-        totalOrdersCount: woRes.count ?? null,
-        techWorkloads: workloads,
-      };
-    },
+    queryFn: () => fetchWorkOrdersPageData({ startDate, endDate, orderLimit }),
   });
 
   const tickets = useMemo(() => woPageData?.tickets ?? [], [woPageData]);
@@ -262,14 +214,12 @@ export default function WorkTrackingWorkOrdersPage() {
     setSubmitting(true);
     setMsg(null);
     try {
-      const supabase = createClient();
-      const { error } = await supabase.rpc('rpc_create_work_order', {
-        p_ticket_id: ticketId,
-        p_department_id: deptId,
-        p_assigned_user_ids: selectedTechIds,
-        p_work_description: note.trim() || null,
+      await createWorkOrder({
+        ticketId,
+        departmentId: deptId,
+        assignedUserIds: selectedTechIds,
+        workDescription: note.trim() || null,
       });
-      if (error) throw error;
       setMsg({ type: 'ok', text: 'İş emri oluşturuldu ve atandı.' });
       setTicketId('');
       setDeptId('');
@@ -286,11 +236,7 @@ export default function WorkTrackingWorkOrdersPage() {
   async function handleStartWork(woId: string) {
     setMsg(null);
     try {
-      const supabase = createClient();
-      const { error } = await supabase.rpc('rpc_technician_start_work', {
-        p_work_order_id: woId,
-      });
-      if (error) throw error;
+      await technicianStartWork(woId);
       setMsg({ type: 'ok', text: 'İş emri başlatıldı.' });
       await loadAll();
     } catch (err) {
@@ -303,12 +249,7 @@ export default function WorkTrackingWorkOrdersPage() {
     if (!reason || !reason.trim()) return;
     setMsg(null);
     try {
-      const supabase = createClient();
-      const { error } = await supabase.rpc('rpc_technician_pause_work', {
-        p_work_order_id: woId,
-        p_waiting_reason: reason.trim(),
-      });
-      if (error) throw error;
+      await technicianPauseWork(woId, reason.trim());
       setMsg({ type: 'ok', text: 'İş emri beklemeye alındı.' });
       await loadAll();
     } catch (err) {
@@ -322,37 +263,11 @@ export default function WorkTrackingWorkOrdersPage() {
     setCompleting(true);
     setMsg(null);
     try {
-      const supabase = createClient();
-      const { data: uRes } = await supabase.auth.getUser();
-      const uid = uRes.user?.id;
-
-      if (uid && completePhotos.length > 0) {
-        for (const rawFile of completePhotos) {
-          const file = await compressImageForUpload(rawFile);
-          const safe = (file.name || 'after.webp').replace(/[^a-zA-Z0-9._-]/g, '_');
-          const path = `${uid}/${completeTarget.id}/${Date.now()}_${safe}`;
-          const { error: upErr } = await supabase.storage
-            .from('work-attachments')
-            .upload(path, file, { contentType: file.type || 'image/webp', upsert: false });
-          if (upErr) throw upErr;
-
-          const { error: attErr } = await supabase.from('attachments').insert({
-            work_order_id: completeTarget.id,
-            uploaded_by: uid,
-            file_path: path,
-            file_name: file.name,
-            mime_type: file.type || 'image/webp',
-            attachment_type: 'after',
-          });
-          if (attErr) throw attErr;
-        }
-      }
-
-      const { error } = await supabase.rpc('rpc_technician_complete_work', {
-        p_work_order_id: completeTarget.id,
-        p_note: completeNote.trim() || 'Web panelinden tamamlandı.',
+      await technicianCompleteWork({
+        workOrderId: completeTarget.id,
+        note: completeNote.trim() || 'Web panelinden tamamlandı.',
+        photos: completePhotos,
       });
-      if (error) throw error;
 
       setMsg({
         type: 'ok',
@@ -379,44 +294,7 @@ export default function WorkTrackingWorkOrdersPage() {
     setPurgingPhotos(true);
     setMsg(null);
     try {
-      const supabase = createClient();
-      let totalPurged = 0;
-
-      // 100'lü gruplar halinde resmi Storage API üzerinden güvenli temizlik
-      for (let round = 0; round < 10; round++) {
-        const { data, error } = await supabase.rpc(
-          'rpc_manager_list_expired_closed_attachments',
-          {
-            p_retention_days: 15,
-            p_batch_limit: 100,
-          }
-        );
-        if (error) throw error;
-
-        const rows =
-          (data as Array<{ attachment_id: string; file_path: string }> | null) ?? [];
-        if (rows.length === 0) break;
-
-        const paths = rows
-          .map((r) => (r.file_path || '').trim())
-          .filter(Boolean);
-        if (paths.length > 0) {
-          const { error: remErr } = await supabase.storage
-            .from('work-attachments')
-            .remove(paths);
-          if (remErr) throw remErr;
-        }
-
-        const ids = rows.map((r) => r.attachment_id);
-        const { data: delCount, error: delErr } = await supabase.rpc(
-          'rpc_manager_confirm_purged_attachments',
-          { p_attachment_ids: ids }
-        );
-        if (delErr) throw delErr;
-        totalPurged += typeof delCount === 'number' ? delCount : rows.length;
-
-        if (rows.length < 100) break;
-      }
+      const totalPurged = await purgeExpiredClosedPhotos(15);
 
       setMsg({
         type: 'ok',
@@ -455,17 +333,12 @@ export default function WorkTrackingWorkOrdersPage() {
     setSavingEdit(true);
     setMsg(null);
     try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from('work_orders')
-        .update({
-          department_id: editDeptId,
-          status: editStatus,
-          work_description: editDesc.trim() || null,
-          waiting_reason: editStatus === 'waiting' ? editWaitingReason.trim() || null : null,
-        })
-        .eq('id', editTarget.id);
-      if (error) throw error;
+      await updateWorkOrder(editTarget.id, {
+        department_id: editDeptId,
+        status: editStatus,
+        work_description: editDesc.trim() || null,
+        waiting_reason: editStatus === 'waiting' ? editWaitingReason.trim() || null : null,
+      });
       setEditTarget(null);
       setMsg({ type: 'ok', text: 'İş emri güncellendi.' });
       await loadAll();
@@ -481,9 +354,7 @@ export default function WorkTrackingWorkOrdersPage() {
     if (!window.confirm(`${label} iş emrini silmek istediğinize emin misiniz?`)) return;
     setMsg(null);
     try {
-      const supabase = createClient();
-      const { error } = await supabase.from('work_orders').delete().eq('id', o.id);
-      if (error) throw error;
+      await deleteWorkOrder(o.id);
       setMsg({ type: 'ok', text: `${label} iş emri silindi.` });
       await loadAll();
     } catch (err) {

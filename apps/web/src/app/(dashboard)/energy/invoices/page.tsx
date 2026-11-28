@@ -13,12 +13,13 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import { createClient } from '@/core/supabase/client';
 import {
-  ENERGY_BUDGET_SELECT,
-  ENERGY_INVOICE_SELECT,
-  METER_SELECT,
-} from '@/core/supabase/selects';
+  deleteEnergyInvoice,
+  deleteEnergyInvoices,
+  fetchEnergyInvoicesData,
+  insertEnergyInvoicesBatch,
+  saveEnergyInvoice,
+} from '@/features/energy/queries';
 import { useDashboardAuth } from '@/core/DashboardContext';
 import { hasModulePermission } from '@/core/permissions';
 import {
@@ -31,7 +32,11 @@ import {
   createDefaultEnergyReportConfig,
 } from '@/core/utils/energy-report-builder';
 import EnergyReportWizardModal from '@/components/energy/EnergyReportWizardModal';
-import { EnergyBudget, EnergyInvoice, Meter } from '@/types/database';
+import {
+  InvoiceEditModal,
+  InvoiceEditModalState,
+} from '@/features/energy/components/InvoiceEditModal';
+import { EnergyInvoice } from '@/types/database';
 
 const MONTHS = [
   'Tüm Yıl',
@@ -114,23 +119,7 @@ export default function EnergyInvoicesPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   // Manuel Ekleme / Düzenleme Modalı
-  const [editModal, setEditModal] = useState<{
-    mode: 'create' | 'edit';
-    id?: string;
-    period_year: number;
-    period_month: number;
-    utility_type: 'electric' | 'gas' | 'water';
-    provider: string;
-    invoice_no: string;
-    invoice_date: string;
-    meter_id: string;
-    meter_name: string;
-    consumption: string;
-    amount_tl: string;
-    inductive_penalty_tl: string;
-    capacitive_penalty_tl: string;
-    tenant_amount_tl: string;
-  } | null>(null);
+  const [editModal, setEditModal] = useState<InvoiceEditModalState | null>(null);
 
   useEffect(() => {
     try {
@@ -144,25 +133,7 @@ export default function EnergyInvoicesPage() {
   const { data: invoicesData } = useQuery({
     queryKey: ['energy', 'invoices', year],
     placeholderData: (prev) => prev,
-    queryFn: async () => {
-      const supabase = createClient();
-      const [invRes, mRes, bRes] = await Promise.all([
-        supabase
-          .from('energy_invoices')
-          .select(ENERGY_INVOICE_SELECT)
-          .eq('period_year', year)
-          .order('period_month', { ascending: false })
-          .order('meter_name'),
-        supabase.from('meters').select(METER_SELECT).eq('is_active', true).order('name'),
-        supabase.from('energy_budgets').select(ENERGY_BUDGET_SELECT).eq('period_year', year),
-      ]);
-      if (invRes.error) throw invRes.error;
-      return {
-        invoices: (invRes.data as EnergyInvoice[]) ?? [],
-        meters: (mRes.data as Meter[]) ?? [],
-        budgets: (bRes.data as EnergyBudget[]) ?? [],
-      };
-    },
+    queryFn: () => fetchEnergyInvoicesData(year),
   });
 
   const invoices = useMemo(() => invoicesData?.invoices ?? [], [invoicesData]);
@@ -283,45 +254,29 @@ export default function EnergyInvoicesPage() {
     setSaving(true);
     setMsg(null);
     try {
-      const supabase = createClient();
-      const { data: uRes } = await supabase.auth.getUser();
-      const uid = uRes.user?.id ?? null;
-      let userName = 'Yönetici';
-      if (uid) {
-        const { data: prof } = await supabase
-          .from('profiles')
-          .select('full_name')
-          .eq('id', uid)
-          .single();
-        if (prof?.full_name) userName = prof.full_name;
-      }
-
-      const { error } = await supabase.from('energy_invoices').insert(
+      await insertEnergyInvoicesBatch(
         selected.map((d) => ({
           period_year: d.year,
           period_month: d.month,
           utility_type: d.utilityType,
           provider: d.provider,
-          invoice_no: d.invoiceNo,
-          invoice_date: d.invoiceDate,
+          invoice_no: d.invoiceNo ?? null,
+          invoice_date: d.invoiceDate ?? null,
           invoice_type: d.invoiceType,
-          meter_id: d.matchedMeterId,
+          meter_id: d.matchedMeterId ?? null,
           meter_name: d.meterName,
-          meter_no: d.meterNo,
-          contract_no: d.contractNo,
-          eic_code: d.eicCode,
-          tekil_code: d.tekilCode,
-          subscriber_no: d.subscriberNo,
+          meter_no: d.meterNo ?? null,
+          contract_no: d.contractNo ?? null,
+          eic_code: d.eicCode ?? null,
+          tekil_code: d.tekilCode ?? null,
+          subscriber_no: d.subscriberNo ?? null,
           consumption: d.consumption,
           amount_tl: d.amountTL,
           inductive_penalty_tl: d.utilityType === 'electric' ? d.inductivePenaltyTL : 0,
           capacitive_penalty_tl: d.utilityType === 'electric' ? d.capacitivePenaltyTL : 0,
-          notes: d.addressHint,
-          entered_by_id: uid,
-          entered_by_name: userName,
+          notes: d.addressHint ?? null,
         }))
       );
-      if (error) throw error;
       setDrafts([]);
       setMsg({ type: 'ok', text: `${selected.length} fatura kaydedildi.` });
       await loadAll();
@@ -341,7 +296,6 @@ export default function EnergyInvoicesPage() {
     setSaving(true);
     setMsg(null);
     try {
-      const supabase = createClient();
       const payload = {
         period_year: editModal.period_year,
         period_month: editModal.period_month,
@@ -361,25 +315,9 @@ export default function EnergyInvoicesPage() {
           editModal.tenant_amount_tl !== '' ? Number(editModal.tenant_amount_tl) : null,
       };
 
-      if (editModal.mode === 'edit' && editModal.id) {
-        const { error } = await supabase
-          .from('energy_invoices')
-          .update(payload)
-          .eq('id', editModal.id);
-        if (error) throw error;
-        setMsg({ type: 'ok', text: 'Fatura güncellendi.' });
-      } else {
-        const { data: uRes } = await supabase.auth.getUser();
-        const uid = uRes.user?.id ?? null;
-        const { error } = await supabase.from('energy_invoices').insert({
-          ...payload,
-          invoice_type: 'normal',
-          entered_by_id: uid,
-          entered_by_name: 'Yönetici',
-        });
-        if (error) throw error;
-        setMsg({ type: 'ok', text: 'Yeni fatura eklendi.' });
-      }
+      const isEdit = editModal.mode === 'edit' && Boolean(editModal.id);
+      await saveEnergyInvoice(isEdit ? editModal.id : undefined, payload);
+      setMsg({ type: 'ok', text: isEdit ? 'Fatura güncellendi.' : 'Yeni fatura eklendi.' });
       setEditModal(null);
       await loadAll();
     } catch (err) {
@@ -402,9 +340,7 @@ export default function EnergyInvoicesPage() {
     }
     setMsg(null);
     try {
-      const supabase = createClient();
-      const { error } = await supabase.from('energy_invoices').delete().eq('id', inv.id);
-      if (error) throw error;
+      await deleteEnergyInvoice(inv.id);
       setMsg({ type: 'ok', text: 'Fatura silindi.' });
       await loadAll();
     } catch (err) {
@@ -426,12 +362,7 @@ export default function EnergyInvoicesPage() {
     }
     setMsg(null);
     try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from('energy_invoices')
-        .delete()
-        .in('id', selectedIds);
-      if (error) throw error;
+      await deleteEnergyInvoices(selectedIds);
       setMsg({ type: 'ok', text: `${selectedIds.length} fatura silindi.` });
       await loadAll();
     } catch (err) {
@@ -903,220 +834,16 @@ export default function EnergyInvoicesPage() {
 
       {/* Fatura Ekle / Düzenle Modalı */}
       {editModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-          <form
-            onSubmit={handleSaveModal}
-            className="w-full max-w-lg space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
-          >
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-extrabold text-navy">
-                {editModal.mode === 'edit' ? 'Fatura Düzenle' : 'Yeni Fatura Ekle'}
-              </h2>
-              <button
-                type="button"
-                onClick={() => setEditModal(null)}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="text-xs font-bold text-slate-600">
-                Yıl
-                <input
-                  type="number"
-                  required
-                  value={editModal.period_year}
-                  onChange={(e) =>
-                    setEditModal({
-                      ...editModal,
-                      period_year: Number(e.target.value) || year,
-                    })
-                  }
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm font-normal"
-                />
-              </label>
-              <label className="text-xs font-bold text-slate-600">
-                Ay
-                <select
-                  value={editModal.period_month}
-                  onChange={(e) =>
-                    setEditModal({
-                      ...editModal,
-                      period_month: Number(e.target.value),
-                    })
-                  }
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm font-normal"
-                >
-                  {MONTHS.slice(1).map((m, idx) => (
-                    <option key={m} value={idx + 1}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-xs font-bold text-slate-600">
-                Enerji Türü
-                <select
-                  value={editModal.utility_type}
-                  onChange={(e) => {
-                    const nextType = e.target.value as 'electric' | 'gas' | 'water';
-                    setEditModal({
-                      ...editModal,
-                      utility_type: nextType,
-                      inductive_penalty_tl:
-                        nextType === 'electric' ? editModal.inductive_penalty_tl : '0',
-                      capacitive_penalty_tl:
-                        nextType === 'electric' ? editModal.capacitive_penalty_tl : '0',
-                    });
-                  }}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm font-normal"
-                >
-                  <option value="electric">Elektrik</option>
-                  <option value="gas">Doğalgaz</option>
-                  <option value="water">Su</option>
-                </select>
-              </label>
-              <label className="text-xs font-bold text-slate-600">
-                Sayaç
-                <select
-                  value={editModal.meter_id}
-                  onChange={(e) => {
-                    const m = meters.find((x) => x.id === e.target.value);
-                    setEditModal({
-                      ...editModal,
-                      meter_id: e.target.value,
-                      meter_name: m ? m.name : editModal.meter_name,
-                    });
-                  }}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm font-normal"
-                >
-                  <option value="">Serbest / Genel</option>
-                  {meters.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-xs font-bold text-slate-600">
-                Sayaç Adı
-                <input
-                  required
-                  value={editModal.meter_name}
-                  onChange={(e) =>
-                    setEditModal({ ...editModal, meter_name: e.target.value })
-                  }
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm font-normal"
-                />
-              </label>
-              <label className="text-xs font-bold text-slate-600">
-                Tedarikçi
-                <input
-                  required
-                  value={editModal.provider}
-                  onChange={(e) =>
-                    setEditModal({ ...editModal, provider: e.target.value })
-                  }
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm font-normal"
-                />
-              </label>
-              <label className="text-xs font-bold text-slate-600">
-                Tüketim
-                <input
-                  type="number"
-                  step="0.001"
-                  required
-                  value={editModal.consumption}
-                  onChange={(e) =>
-                    setEditModal({ ...editModal, consumption: e.target.value })
-                  }
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm font-normal"
-                />
-              </label>
-              <label className="text-xs font-bold text-slate-600">
-                Tutar (TL)
-                <input
-                  type="number"
-                  step="0.01"
-                  required
-                  value={editModal.amount_tl}
-                  onChange={(e) =>
-                    setEditModal({ ...editModal, amount_tl: e.target.value })
-                  }
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm font-normal"
-                />
-              </label>
-              {editModal.utility_type === 'electric' && (
-                <>
-                  <label className="text-xs font-bold text-slate-600">
-                    İndüktif Ceza (TL)
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editModal.inductive_penalty_tl}
-                      onChange={(e) =>
-                        setEditModal({ ...editModal, inductive_penalty_tl: e.target.value })
-                      }
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm font-normal"
-                    />
-                  </label>
-                  <label className="text-xs font-bold text-slate-600">
-                    Kapasitif Ceza (TL)
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editModal.capacitive_penalty_tl}
-                      onChange={(e) =>
-                        setEditModal({ ...editModal, capacitive_penalty_tl: e.target.value })
-                      }
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm font-normal"
-                    />
-                  </label>
-                </>
-              )}
-              <label className="text-xs font-bold text-slate-600">
-                Kiracı Payı (TL)
-                <input
-                  type="number"
-                  step="0.01"
-                  value={editModal.tenant_amount_tl}
-                  onChange={(e) =>
-                    setEditModal({ ...editModal, tenant_amount_tl: e.target.value })
-                  }
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm font-normal"
-                />
-              </label>
-              <label className="text-xs font-bold text-slate-600">
-                Fatura Tarihi
-                <input
-                  type="date"
-                  value={editModal.invoice_date}
-                  onChange={(e) =>
-                    setEditModal({ ...editModal, invoice_date: e.target.value })
-                  }
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-canvas px-3 py-2 text-sm font-normal"
-                />
-              </label>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setEditModal(null)}
-                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600"
-              >
-                Vazgeç
-              </button>
-              <button
-                type="submit"
-                disabled={saving}
-                className="rounded-xl bg-navy px-4 py-2 text-xs font-bold text-white hover:bg-navy-hover disabled:opacity-50"
-              >
-                {saving ? 'Kaydediliyor...' : 'Kaydet'}
-              </button>
-            </div>
-          </form>
-        </div>
+        <InvoiceEditModal
+          editModal={editModal}
+          year={year}
+          months={MONTHS}
+          meters={meters}
+          saving={saving}
+          onChange={setEditModal}
+          onClose={() => setEditModal(null)}
+          onSubmit={handleSaveModal}
+        />
       )}
 
       <EnergyReportWizardModal

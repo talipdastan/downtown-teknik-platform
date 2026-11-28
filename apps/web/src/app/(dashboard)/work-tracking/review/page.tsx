@@ -4,44 +4,15 @@ import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Camera, CheckCircle2, MessageSquare, RotateCcw } from 'lucide-react';
-import { createClient } from '@/core/supabase/client';
+import {
+  fetchPendingReviews,
+  managerCloseTicket,
+  ReviewItem,
+} from '@/features/work-tracking/queries';
 import { useDebouncedRealtime } from '@/core/hooks/useDebouncedRealtime';
 import { formatDateTime } from '@/core/constants';
 import { useDashboardAuth } from '@/core/DashboardContext';
 import { hasModulePermission } from '@/core/permissions';
-
-type PhotoItem = {
-  id: string;
-  file_path: string;
-  file_name: string | null;
-  attachment_type: 'before' | 'after' | 'general';
-  signedUrl?: string;
-};
-
-type CommentItem = {
-  id: string;
-  comment: string;
-  created_at: string;
-  profiles?: { full_name: string } | null;
-};
-
-type ReviewItem = {
-  id: string;
-  ticket_id: string;
-  work_description: string | null;
-  completed_at: string | null;
-  departments?: { name: string } | null;
-  tickets?: {
-    id: string;
-    ticket_number: string | null;
-    description: string;
-    custom_location: string | null;
-    locations?: { name: string; floors?: { name: string } | null } | null;
-    equipments?: { code: string; name: string } | null;
-  } | null;
-  photos: PhotoItem[];
-  notes: CommentItem[];
-};
 
 export default function WorkTrackingReviewPage() {
   const { profile } = useDashboardAuth();
@@ -54,78 +25,7 @@ export default function WorkTrackingReviewPage() {
 
   const { data: items = [], isLoading: loading } = useQuery({
     queryKey: ['wt', 'review'],
-    queryFn: async () => {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('work_orders')
-        .select(
-          'id, ticket_id, work_description, completed_at, departments(name), tickets!inner(id, ticket_number, description, status, custom_location, locations(name, floors(name)), equipments(code, name))'
-        )
-        .eq('status', 'completed')
-        .eq('tickets.status', 'resolved')
-        .order('completed_at', { ascending: false })
-        .limit(100);
-      if (error) throw error;
-
-      const raw = (data as unknown as Omit<ReviewItem, 'photos' | 'notes'>[]) ?? [];
-      if (raw.length === 0) return [];
-
-      const ticketIds = Array.from(new Set(raw.map((r) => r.ticket_id)));
-      const woIds = raw.map((r) => r.id);
-
-      const [tAttRes, wAttRes, commRes] = await Promise.all([
-        supabase
-          .from('attachments')
-          .select('id, ticket_id, work_order_id, file_path, file_name, attachment_type')
-          .in('ticket_id', ticketIds),
-        supabase
-          .from('attachments')
-          .select('id, ticket_id, work_order_id, file_path, file_name, attachment_type')
-          .in('work_order_id', woIds),
-        supabase
-          .from('comments')
-          .select('id, ticket_id, comment, created_at, profiles(full_name)')
-          .in('ticket_id', ticketIds)
-          .order('created_at', { ascending: true }),
-      ]);
-
-      const allAtts = [
-        ...((tAttRes.data ?? []) as Array<
-          PhotoItem & { ticket_id: string | null; work_order_id: string | null }
-        >),
-        ...((wAttRes.data ?? []) as Array<
-          PhotoItem & { ticket_id: string | null; work_order_id: string | null }
-        >),
-      ];
-
-      const signedMap = new Map<string, string>();
-      if (allAtts.length > 0) {
-        const paths = Array.from(new Set(allAtts.map((a) => a.file_path)));
-        const { data: signed } = await supabase.storage
-          .from('work-attachments')
-          .createSignedUrls(paths, 3600);
-        for (const s of signed ?? []) {
-          if (s.path && s.signedUrl) signedMap.set(s.path, s.signedUrl);
-        }
-      }
-
-      const allComments =
-        (commRes.data as unknown as Array<CommentItem & { ticket_id: string }>) ?? [];
-
-      return raw.map((r) => {
-        const itemPhotos = allAtts
-          .filter((a) => a.ticket_id === r.ticket_id || a.work_order_id === r.id)
-          .map((a) => ({
-            id: a.id,
-            file_path: a.file_path,
-            file_name: a.file_name,
-            attachment_type: a.attachment_type,
-            signedUrl: signedMap.get(a.file_path),
-          }));
-        const itemNotes = allComments.filter((c) => c.ticket_id === r.ticket_id);
-        return { ...r, photos: itemPhotos, notes: itemNotes };
-      });
-    },
+    queryFn: fetchPendingReviews,
   });
 
   const loadPending = useCallback(async () => {
@@ -143,13 +43,11 @@ export default function WorkTrackingReviewPage() {
     setBusyId(item.id);
     setMsg(null);
     try {
-      const supabase = createClient();
-      const { error } = await supabase.rpc('rpc_manager_close_ticket', {
-        p_ticket_id: item.ticket_id,
-        p_resolution_note: 'Yönetici tarafından incelenip onaylanarak kapatıldı.',
-        p_reopen: false,
+      await managerCloseTicket({
+        ticketId: item.ticket_id,
+        resolutionNote: 'Yönetici tarafından incelenip onaylanarak kapatıldı.',
+        reopen: false,
       });
-      if (error) throw error;
       setMsg({ type: 'ok', text: 'Arıza ve iş emri onaylanarak kapatıldı.' });
       await loadPending();
     } catch (err) {
@@ -168,13 +66,11 @@ export default function WorkTrackingReviewPage() {
     setBusyId(item.id);
     setMsg(null);
     try {
-      const supabase = createClient();
-      const { error } = await supabase.rpc('rpc_manager_close_ticket', {
-        p_ticket_id: item.ticket_id,
-        p_resolution_note: reason,
-        p_reopen: true,
+      await managerCloseTicket({
+        ticketId: item.ticket_id,
+        resolutionNote: reason,
+        reopen: true,
       });
-      if (error) throw error;
       setMsg({ type: 'ok', text: 'İş emri gerekçesiyle birlikte teknisyene iade edildi.' });
       await loadPending();
     } catch (err) {

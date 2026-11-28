@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  BarChart3,
   Droplets,
   FileDown,
   FileSpreadsheet,
@@ -13,14 +12,16 @@ import {
   Plus,
   SlidersHorizontal,
   Trash2,
-  TrendingDown,
-  TrendingUp,
   Upload,
   X,
   Zap,
 } from 'lucide-react';
-import { createClient } from '@/core/supabase/client';
-import { ENERGY_BUDGET_SELECT, ENERGY_INVOICE_SELECT } from '@/core/supabase/selects';
+import {
+  deleteEnergyBudget,
+  fetchEnergyBudgetsData,
+  saveEnergyBudget,
+  upsertEnergyBudgetsBatch,
+} from '@/features/energy/queries';
 import { useDashboardAuth } from '@/core/DashboardContext';
 import { hasModulePermission } from '@/core/permissions';
 import {
@@ -34,13 +35,13 @@ import {
 } from '@/core/utils/energy-report-builder';
 import EnergyReportWizardModal from '@/components/energy/EnergyReportWizardModal';
 import { BudgetFormModal } from '@/features/energy/components/BudgetFormModal';
-import { EnergyBudget, EnergyInvoice, UtilityType } from '@/types/database';
+import { BudgetComparisonChart } from '@/features/energy/components/BudgetComparisonChart';
+import { EnergyBudget, UtilityType } from '@/types/database';
 import {
   arrayBufferToBase64,
   BudgetFormState,
   buildPrintableChartSvg,
   ChartMetric,
-  formatCompactAxis,
   GEMINI_STORAGE_KEY,
   MonthlyChartPoint,
   MONTHS,
@@ -90,23 +91,7 @@ export default function EnergyBudgetsPage() {
   const { data: budgetData, isLoading: loading } = useQuery({
     queryKey: ['energy', 'budgets', year],
     placeholderData: (prev) => prev,
-    queryFn: async () => {
-      const supabase = createClient();
-      const [bRes, iRes] = await Promise.all([
-        supabase
-          .from('energy_budgets')
-          .select(ENERGY_BUDGET_SELECT)
-          .eq('period_year', year)
-          .order('period_month')
-          .order('utility_type'),
-        supabase.from('energy_invoices').select(ENERGY_INVOICE_SELECT).eq('period_year', year),
-      ]);
-      if (bRes.error) throw bRes.error;
-      return {
-        budgets: (bRes.data as EnergyBudget[]) ?? [],
-        invoices: (iRes.data as EnergyInvoice[]) ?? [],
-      };
-    },
+    queryFn: () => fetchEnergyBudgetsData(year),
   });
 
   const budgets = useMemo(() => budgetData?.budgets ?? [], [budgetData]);
@@ -415,7 +400,6 @@ export default function EnergyBudgetsPage() {
     setSaving(true);
     setMsg(null);
     try {
-      const supabase = createClient();
       const payload = {
         period_year: Number(formModal.period_year) || year,
         period_month: Number(formModal.period_month) || 1,
@@ -426,20 +410,11 @@ export default function EnergyBudgetsPage() {
         prev_year_tl: parseNumber(formModal.prev_year_tl),
       };
 
-      if (formModal.id) {
-        const { error } = await supabase
-          .from('energy_budgets')
-          .update(payload)
-          .eq('id', formModal.id);
-        if (error) throw error;
-        setMsg({ type: 'ok', text: 'Bütçe kaydı güncellendi.' });
-      } else {
-        const { error } = await supabase
-          .from('energy_budgets')
-          .upsert(payload, { onConflict: 'period_year,period_month,utility_type' });
-        if (error) throw error;
-        setMsg({ type: 'ok', text: 'Bütçe kaydı eklendi.' });
-      }
+      await saveEnergyBudget(formModal.id, payload);
+      setMsg({
+        type: 'ok',
+        text: formModal.id ? 'Bütçe kaydı güncellendi.' : 'Bütçe kaydı eklendi.',
+      });
       setFormModal(null);
       await loadAll();
     } catch (err) {
@@ -457,9 +432,7 @@ export default function EnergyBudgetsPage() {
     if (!window.confirm(`${label} bütçe kaydını silmek istediğinize emin misiniz?`)) return;
     setMsg(null);
     try {
-      const supabase = createClient();
-      const { error } = await supabase.from('energy_budgets').delete().eq('id', b.id);
-      if (error) throw error;
+      await deleteEnergyBudget(b.id);
       setMsg({ type: 'ok', text: `${label} bütçe kaydı silindi.` });
       await loadAll();
     } catch (err) {
@@ -514,7 +487,6 @@ export default function EnergyBudgetsPage() {
     setMsg(null);
 
     try {
-      const supabase = createClient();
       const lowerName = file.name.toLowerCase();
 
       if (lowerName.endsWith('.csv') || lowerName.endsWith('.txt')) {
@@ -564,10 +536,7 @@ export default function EnergyBudgetsPage() {
           );
         }
 
-        const { error } = await supabase
-          .from('energy_budgets')
-          .upsert(rowsToUpsert, { onConflict: 'period_year,period_month,utility_type' });
-        if (error) throw error;
+        await upsertEnergyBudgetsBatch(rowsToUpsert);
 
         setMsg({
           type: 'ok',
@@ -626,10 +595,7 @@ export default function EnergyBudgetsPage() {
           throw new Error('PDF verisi bütçe formatına dönüştürülemedi.');
         }
 
-        const { error } = await supabase
-          .from('energy_budgets')
-          .upsert(rowsToUpsert, { onConflict: 'period_year,period_month,utility_type' });
-        if (error) throw error;
+        await upsertEnergyBudgetsBatch(rowsToUpsert);
 
         setMsg({
           type: 'ok',
@@ -1025,306 +991,19 @@ export default function EnergyBudgetsPage() {
       </div>
 
       {/* Ay Bazında Grafik ve Analiz Paneli */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-navy/10 text-navy">
-              <BarChart3 className="h-4 w-4" />
-            </span>
-            <div>
-              <h2 className="text-base font-extrabold text-slate-900">
-                Ay Bazında Bütçe, Gerçekleşen & Geçmiş Yıl Analizi ({year})
-              </h2>
-              <p className="text-xs text-slate-500">{chartMeta.title}</p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-1.5">
-            {(
-              [
-                ['tl', 'Tutar (TL)'],
-                ['electric_qty', 'Elektrik (kWh)'],
-                ['gas_qty', 'Doğalgaz (m³)'],
-                ['water_qty', 'Su (m³)'],
-              ] as const
-            ).map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setChartMetric(key)}
-                className={`rounded-xl px-3 py-1.5 text-xs font-bold transition ${
-                  chartMetric === key
-                    ? 'bg-turquoise text-white shadow-sm'
-                    : 'border border-slate-200 bg-canvas text-slate-700 hover:bg-slate-100'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Seçili / Üzerine Gelinen Ay İnceleme Şeridi */}
-        {activeInspectPoint && (
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-canvas px-4 py-2.5 text-xs">
-            <div className="font-extrabold text-navy">
-              {activeInspectPoint.fullLabel} {year} Detayı:
-            </div>
-            <div className="flex flex-wrap items-center gap-4">
-              <span>
-                Bütçe:{' '}
-                <strong className="text-navy">
-                  {chartMeta.isQty
-                    ? `${fmtQty(activeInspectPoint.budgetVal)} ${chartMeta.unit}`
-                    : `${fmtTl(activeInspectPoint.budgetVal)} ₺`}
-                </strong>
-              </span>
-              <span>
-                Gerçekleşen:{' '}
-                <strong className="text-turquoise">
-                  {chartMeta.isQty
-                    ? `${fmtQty(activeInspectPoint.actualVal)} ${chartMeta.unit}`
-                    : `${fmtTl(activeInspectPoint.actualVal)} ₺`}
-                </strong>
-              </span>
-              <span>
-                Önceki Yıl:{' '}
-                <strong className="text-slate-600">
-                  {chartMeta.isQty
-                    ? `${fmtQty(activeInspectPoint.prevVal)} ${chartMeta.unit}`
-                    : `${fmtTl(activeInspectPoint.prevVal)} ₺`}
-                </strong>
-              </span>
-              <span>
-                Sapma:{' '}
-                <strong
-                  className={
-                    activeInspectPoint.diffPct === null
-                      ? 'text-slate-400'
-                      : activeInspectPoint.diffPct > 0
-                      ? 'text-red-600'
-                      : 'text-emerald-600'
-                  }
-                >
-                  {activeInspectPoint.diffPct !== null
-                    ? `${activeInspectPoint.diffPct >= 0 ? '+' : ''}${activeInspectPoint.diffPct.toFixed(1)}%`
-                    : '-'}
-                </strong>
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* 12 Aylık Gruplanmış Çubuk Grafik (SVG) */}
-        <div className="mt-4 overflow-x-auto">
-          <div className="min-w-[680px]">
-            <svg viewBox="0 0 920 250" className="h-64 w-full select-none">
-              {/* Gösterge (Legend) */}
-              <g transform="translate(58, 8)">
-                <rect x="0" y="0" width="10" height="10" rx="2" fill="#17365D" />
-                <text x="15" y="9" fontSize="11" fontWeight="700" fill="#334155">
-                  Bütçe ({chartMeta.unit})
-                </text>
-                <rect x="130" y="0" width="10" height="10" rx="2" fill="#0E7490" />
-                <text x="145" y="9" fontSize="11" fontWeight="700" fill="#334155">
-                  Gerçekleşen (Bütçe İçi)
-                </text>
-                <rect x="295" y="0" width="10" height="10" rx="2" fill="#DC2626" />
-                <text x="310" y="9" fontSize="11" fontWeight="700" fill="#334155">
-                  Gerçekleşen (Bütçe Aşımı)
-                </text>
-                <rect x="480" y="0" width="10" height="10" rx="2" fill="#94A3B8" />
-                <text x="495" y="9" fontSize="11" fontWeight="700" fill="#334155">
-                  Önceki Yıl ({year - 1})
-                </text>
-              </g>
-
-              {/* Y Ekseni Kılavuz Çizgileri */}
-              {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
-                const padTop = 30;
-                const plotH = 182;
-                const y = padTop + plotH * (1 - ratio);
-                const val = chartMeta.niceMax * ratio;
-                return (
-                  <g key={ratio}>
-                    <line
-                      x1="58"
-                      y1={y}
-                      x2="902"
-                      y2={y}
-                      stroke="#E2E8F0"
-                      strokeDasharray="3 3"
-                    />
-                    <text
-                      x="50"
-                      y={y + 3}
-                      textAnchor="end"
-                      fontSize="10"
-                      fill="#64748B"
-                    >
-                      {formatCompactAxis(val)}
-                    </text>
-                  </g>
-                );
-              })}
-
-              <line x1="58" y1="212" x2="902" y2="212" stroke="#CBD5E1" strokeWidth="1.2" />
-
-              {/* 12 Ay Grupları */}
-              {chartMeta.points.map((p, idx) => {
-                const padLeft = 58;
-                const plotW = 844;
-                const padTop = 30;
-                const plotH = 182;
-                const groupW = plotW / 12;
-                const barW = 13;
-                const gx = padLeft + idx * groupW;
-                const centerX = gx + groupW / 2;
-                const startX = centerX - (barW * 3 + 6) / 2;
-
-                const hBudget = (p.budgetVal / chartMeta.niceMax) * plotH;
-                const hActual = (p.actualVal / chartMeta.niceMax) * plotH;
-                const hPrev = (p.prevVal / chartMeta.niceMax) * plotH;
-                const isOver = p.budgetVal > 0 && p.actualVal > p.budgetVal;
-                const isActive =
-                  hoveredMonth === p.monthNum || (hoveredMonth === null && month === p.monthNum);
-
-                return (
-                  <g
-                    key={p.monthNum}
-                    className="cursor-pointer"
-                    onMouseEnter={() => setHoveredMonth(p.monthNum)}
-                    onMouseLeave={() => setHoveredMonth(null)}
-                    onClick={() => setMonth(month === p.monthNum ? 0 : p.monthNum)}
-                  >
-                    <rect
-                      x={gx + 3}
-                      y={padTop}
-                      width={groupW - 6}
-                      height={plotH}
-                      rx="6"
-                      fill={isActive ? '#EFF6FF' : 'transparent'}
-                    />
-                    <rect
-                      x={startX}
-                      y={padTop + plotH - hBudget}
-                      width={barW}
-                      height={Math.max(2, hBudget)}
-                      rx="3"
-                      fill="#17365D"
-                    />
-                    <rect
-                      x={startX + barW + 3}
-                      y={padTop + plotH - hActual}
-                      width={barW}
-                      height={Math.max(2, hActual)}
-                      rx="3"
-                      fill={isOver ? '#DC2626' : '#0E7490'}
-                    />
-                    <rect
-                      x={startX + (barW + 3) * 2}
-                      y={padTop + plotH - hPrev}
-                      width={barW}
-                      height={Math.max(2, hPrev)}
-                      rx="3"
-                      fill="#94A3B8"
-                    />
-                    {p.diffPct !== null && (
-                      <text
-                        x={centerX}
-                        y={243}
-                        textAnchor="middle"
-                        fontSize="9"
-                        fontWeight="700"
-                        fill={p.diffPct > 0 ? '#DC2626' : '#059669'}
-                      >
-                        {p.diffPct >= 0 ? '+' : ''}
-                        {p.diffPct.toFixed(0)}%
-                      </text>
-                    )}
-                    <text
-                      x={centerX}
-                      y={229}
-                      textAnchor="middle"
-                      fontSize="11"
-                      fontWeight={isActive ? '800' : '600'}
-                      fill={isActive ? '#17365D' : '#475569'}
-                    >
-                      {p.shortLabel}
-                    </text>
-                  </g>
-                );
-              })}
-            </svg>
-          </div>
-        </div>
-
-        {/* Aylık Analiz İçgörüleri */}
-        <div className="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-3">
-          <div className="rounded-xl bg-canvas p-3">
-            <div className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
-              En Yüksek Sapma Ayı
-            </div>
-            {chartMeta.highestDeviationMonth ? (
-              <div className="mt-1 flex items-center gap-2">
-                {(chartMeta.highestDeviationMonth.diffPct ?? 0) > 0 ? (
-                  <TrendingUp className="h-4 w-4 text-red-600" />
-                ) : (
-                  <TrendingDown className="h-4 w-4 text-emerald-600" />
-                )}
-                <span className="text-sm font-extrabold text-slate-900">
-                  {chartMeta.highestDeviationMonth.fullLabel} (
-                  {(chartMeta.highestDeviationMonth.diffPct ?? 0) >= 0 ? '+' : ''}
-                  {(chartMeta.highestDeviationMonth.diffPct ?? 0).toFixed(1)}%)
-                </span>
-              </div>
-            ) : (
-              <div className="mt-1 text-xs text-slate-400">Karşılaştırma verisi bekleniyor</div>
-            )}
-          </div>
-
-          <div className="rounded-xl bg-canvas p-3">
-            <div className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
-              Geçmiş Yıl Değişimi ({year - 1} vs {year})
-            </div>
-            {chartMeta.yoyOverallPct !== null ? (
-              <div className="mt-1 text-sm font-extrabold text-slate-900">
-                <span
-                  className={
-                    chartMeta.yoyOverallPct > 0 ? 'text-red-600' : 'text-emerald-600'
-                  }
-                >
-                  {chartMeta.yoyOverallPct >= 0 ? '+' : ''}
-                  {chartMeta.yoyOverallPct.toFixed(1)}%
-                </span>{' '}
-                <span className="text-xs font-medium text-slate-500">
-                  ({chartMeta.yoyComparableCount} kıyaslanabilir ay)
-                </span>
-              </div>
-            ) : (
-              <div className="mt-1 text-xs text-slate-400">
-                Geçmiş yıl gerçekleşen baz verisi girilmemiş
-              </div>
-            )}
-          </div>
-
-          <div className="rounded-xl bg-canvas p-3">
-            <div className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
-              Bütçe Gerçekleşme Oranı
-            </div>
-            {chartMeta.realizationRatio !== null ? (
-              <div className="mt-1 text-sm font-extrabold text-navy">
-                %{chartMeta.realizationRatio.toFixed(1)}{' '}
-                <span className="text-xs font-medium text-slate-500">
-                  ({chartMeta.underBudgetCount} ay içi · {chartMeta.overBudgetCount} ay aşım)
-                </span>
-              </div>
-            ) : (
-              <div className="mt-1 text-xs text-slate-400">Fatura gerçekleşme verisi yok</div>
-            )}
-          </div>
-        </div>
-      </div>
+      <BudgetComparisonChart
+        year={year}
+        month={month}
+        hoveredMonth={hoveredMonth}
+        chartMetric={chartMetric}
+        chartMeta={chartMeta}
+        activeInspectPoint={activeInspectPoint}
+        fmtTl={fmtTl}
+        fmtQty={fmtQty}
+        onMetricChange={setChartMetric}
+        onHoverMonth={setHoveredMonth}
+        onSelectMonth={setMonth}
+      />
 
       {msg && (
         <div

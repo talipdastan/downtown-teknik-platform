@@ -3,8 +3,14 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileDown, FileSpreadsheet, Pencil, Plus, Trash2, X } from 'lucide-react';
-import { createClient } from '@/core/supabase/client';
-import { METER_READING_SELECT, METER_SELECT } from '@/core/supabase/selects';
+import {
+  deleteMeterReading,
+  fetchActiveMeters,
+  fetchMeterReadings,
+  ReadingWithMeter,
+  recordMeterReading,
+  updateMeterReading,
+} from '@/features/energy/queries';
 import { formatDate } from '@/core/constants';
 import { useDashboardAuth } from '@/core/DashboardContext';
 import { hasModulePermission } from '@/core/permissions';
@@ -18,17 +24,6 @@ import {
   ReadingsViewMode,
   resolveReadingsViewMode,
 } from '@/core/utils/energy-readings';
-import { Meter, MeterReading } from '@/types/database';
-
-type ReadingWithMeter = MeterReading & {
-  meters?: {
-    name: string;
-    meter_type: 'electric' | 'mechanical';
-    category?: string;
-    multiplier?: number;
-  } | null;
-};
-
 const PAGE_SIZE = 40;
 
 export default function EnergyReadingsPage() {
@@ -71,17 +66,7 @@ export default function EnergyReadingsPage() {
   const { data: meters = [] } = useQuery({
     queryKey: ['energy', 'active-meters'],
     staleTime: 5 * 60 * 1000,
-    queryFn: async () => {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('meters')
-        .select(METER_SELECT)
-        .eq('is_active', true)
-        .is('deleted_at', null)
-        .order('name');
-      if (error) throw error;
-      return (data as Meter[]) ?? [];
-    },
+    queryFn: fetchActiveMeters,
   });
 
   const {
@@ -91,24 +76,15 @@ export default function EnergyReadingsPage() {
   } = useQuery({
     queryKey: ['energy', 'readings', { typeFilter, meterFilter, dateFrom, dateTo, page }],
     placeholderData: (prev) => prev,
-    queryFn: async () => {
-      const supabase = createClient();
-      let q = supabase
-        .from('meter_readings')
-        .select(`${METER_READING_SELECT}, meters!inner(name, meter_type, category, multiplier, deleted_at)`)
-        .is('meters.deleted_at', null)
-        .order('reading_date', { ascending: false })
-        .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
-
-      if (typeFilter !== 'all') q = q.eq('meters.meter_type', typeFilter);
-      if (meterFilter) q = q.eq('meter_id', meterFilter);
-      if (dateFrom) q = q.gte('reading_date', `${dateFrom}T00:00:00+03:00`);
-      if (dateTo) q = q.lte('reading_date', `${dateTo}T23:59:59+03:00`);
-
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data as unknown as ReadingWithMeter[]) ?? [];
-    },
+    queryFn: () =>
+      fetchMeterReadings({
+        typeFilter,
+        meterFilter,
+        dateFrom,
+        dateTo,
+        page,
+        pageSize: PAGE_SIZE,
+      }),
   });
 
   const loadData = async () => {
@@ -133,25 +109,15 @@ export default function EnergyReadingsPage() {
     setSubmitting(true);
     setMsg(null);
     try {
-      const supabase = createClient();
-      const { error } = await supabase.rpc('rpc_record_meter_reading', {
-        p_meter_id: selectedMeter.id,
-        p_reading_date: `${readingDate}T12:00:00+03:00`,
-        p_active_value: selectedMeter.meter_type === 'electric' ? Number(activeVal) : null,
-        p_inductive_value: selectedMeter.meter_type === 'electric' ? Number(indVal) : null,
-        p_capacitive_value: selectedMeter.meter_type === 'electric' ? Number(capVal) : null,
-        p_index_value: selectedMeter.meter_type === 'mechanical' ? Number(indexVal) : null,
-        p_overwrite: overwrite,
+      await recordMeterReading({
+        meterId: selectedMeter.id,
+        readingDate,
+        activeValue: selectedMeter.meter_type === 'electric' ? Number(activeVal) : null,
+        inductiveValue: selectedMeter.meter_type === 'electric' ? Number(indVal) : null,
+        capacitiveValue: selectedMeter.meter_type === 'electric' ? Number(capVal) : null,
+        indexValue: selectedMeter.meter_type === 'mechanical' ? Number(indexVal) : null,
+        overwrite,
       });
-      if (error) {
-        if (!overwrite && error.message.includes('SAME_DAY_EXISTS')) {
-          if (window.confirm('Seçilen gün için zaten kayıt var. Üzerine yazılsın mı?')) {
-            await handleRecord(e, true);
-            return;
-          }
-        }
-        throw error;
-      }
       setMsg({ type: 'ok', text: 'Okuma kaydedildi.' });
       setActiveVal('');
       setIndVal('');
@@ -159,9 +125,16 @@ export default function EnergyReadingsPage() {
       setIndexVal('');
       await loadData();
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'Kayıt başarısız.';
+      if (!overwrite && errMsg.includes('SAME_DAY_EXISTS')) {
+        if (window.confirm('Seçilen gün için zaten kayıt var. Üzerine yazılsın mı?')) {
+          await handleRecord(e, true);
+          return;
+        }
+      }
       setMsg({
         type: 'err',
-        text: err instanceof Error ? err.message : 'Kayıt başarısız.',
+        text: errMsg,
       });
     } finally {
       setSubmitting(false);
@@ -187,23 +160,18 @@ export default function EnergyReadingsPage() {
     setSavingEdit(true);
     setMsg(null);
     try {
-      const supabase = createClient();
       const isElec = editing.meters?.meter_type === 'electric';
-      const { error } = await supabase
-        .from('meter_readings')
-        .update({
-          reading_date: `${editDate}T12:00:00+03:00`,
-          active_value: isElec && editActive !== '' ? Number(editActive) : null,
-          inductive_value: isElec && editInd !== '' ? Number(editInd) : null,
-          capacitive_value: isElec && editCap !== '' ? Number(editCap) : null,
-          inductive_percent: isElec && editIndPct !== '' ? Number(editIndPct) : null,
-          capacitive_percent: isElec && editCapPct !== '' ? Number(editCapPct) : null,
-          index_value: !isElec && editIndex !== '' ? Number(editIndex) : null,
-          consumption: Number(editConsumption) || 0,
-          notes: editNotes.trim() || null,
-        })
-        .eq('id', editing.id);
-      if (error) throw error;
+      await updateMeterReading(editing.id, {
+        reading_date: `${editDate}T12:00:00+03:00`,
+        active_value: isElec && editActive !== '' ? Number(editActive) : null,
+        inductive_value: isElec && editInd !== '' ? Number(editInd) : null,
+        capacitive_value: isElec && editCap !== '' ? Number(editCap) : null,
+        inductive_percent: isElec && editIndPct !== '' ? Number(editIndPct) : null,
+        capacitive_percent: isElec && editCapPct !== '' ? Number(editCapPct) : null,
+        index_value: !isElec && editIndex !== '' ? Number(editIndex) : null,
+        consumption: Number(editConsumption) || 0,
+        notes: editNotes.trim() || null,
+      });
       setEditing(null);
       setMsg({ type: 'ok', text: 'Okuma kaydı güncellendi.' });
       await loadData();
@@ -227,9 +195,7 @@ export default function EnergyReadingsPage() {
     }
     setMsg(null);
     try {
-      const supabase = createClient();
-      const { error } = await supabase.from('meter_readings').delete().eq('id', r.id);
-      if (error) throw error;
+      await deleteMeterReading(r.id);
       setMsg({ type: 'ok', text: 'Okuma kaydı silindi.' });
       await loadData();
     } catch (err) {

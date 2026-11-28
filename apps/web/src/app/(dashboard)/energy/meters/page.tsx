@@ -16,8 +16,14 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import { createClient } from '@/core/supabase/client';
-import { EQUIPMENT_SELECT, METER_SELECT } from '@/core/supabase/selects';
+import {
+  fetchMetersData,
+  MeterWithEq,
+  permanentlyDeleteMeter,
+  restoreMeter,
+  saveMeter,
+  softDeleteMeter,
+} from '@/features/energy/queries';
 import { formatDateTime } from '@/core/constants';
 import { useDashboardAuth } from '@/core/DashboardContext';
 import { hasModulePermission } from '@/core/permissions';
@@ -26,11 +32,7 @@ import {
   exportPrintablePdf,
   ReportCell,
 } from '@/core/utils/report-export';
-import { Equipment, Meter, MeterCategory, MeterType, TrashedMeter } from '@/types/database';
-
-type MeterWithEq = Meter & {
-  equipments?: { code: string; name: string } | null;
-};
+import { Meter, MeterCategory, MeterType, TrashedMeter } from '@/types/database';
 
 function categoryLabel(m: Pick<Meter, 'meter_type' | 'category'>) {
   if (m.meter_type === 'electric' || m.category === 'electric') return 'Elektrik';
@@ -75,28 +77,7 @@ export default function EnergyMetersPage() {
 
   const { data: metersData, isLoading: loading } = useQuery({
     queryKey: ['energy', 'meters', isAdmin],
-    queryFn: async () => {
-      const supabase = createClient();
-      const [mRes, eqRes, trashRes] = await Promise.all([
-        supabase
-          .from('meters')
-          .select(`${METER_SELECT}, equipments(code, name)`)
-          .eq('is_active', true)
-          .is('deleted_at', null)
-          .order('meter_type')
-          .order('sort_order')
-          .order('name'),
-        supabase.from('equipments').select(EQUIPMENT_SELECT).eq('is_active', true).order('name').limit(300),
-        isAdmin ? supabase.rpc('rpc_list_trashed_meters') : Promise.resolve({ data: [], error: null }),
-      ]);
-      if (mRes.error) throw mRes.error;
-      if (trashRes.error) throw trashRes.error;
-      return {
-        meters: (mRes.data as unknown as MeterWithEq[]) ?? [],
-        equipments: (eqRes.data as Equipment[]) ?? [],
-        trashedMeters: (trashRes.data as unknown as TrashedMeter[]) ?? [],
-      };
-    },
+    queryFn: () => fetchMetersData(isAdmin),
   });
 
   const meters = useMemo(() => metersData?.meters ?? [], [metersData]);
@@ -163,15 +144,14 @@ export default function EnergyMetersPage() {
     setSaving(true);
     setMsg(null);
     try {
-      const supabase = createClient();
       const payload = {
         name: formModal.name.trim(),
         meter_type: formModal.meter_type,
         category:
           formModal.meter_type === 'electric'
-            ? 'electric'
+            ? ('electric' as MeterCategory)
             : formModal.category === 'electric'
-            ? 'water'
+            ? ('water' as MeterCategory)
             : formModal.category,
         multiplier: Number(formModal.multiplier) || 1,
         eic_code: formModal.eic_code.trim() ? formModal.eic_code.trim().toUpperCase() : null,
@@ -183,18 +163,17 @@ export default function EnergyMetersPage() {
         equipment_id: formModal.equipment_id || null,
       };
 
-      if (formModal.id) {
-        const { error } = await supabase.from('meters').update(payload).eq('id', formModal.id);
-        if (error) throw error;
-        setMsg({ type: 'ok', text: `${payload.name} sayacı güncellendi.` });
-      } else {
-        const { error } = await supabase.from('meters').insert({
-          ...payload,
-          sort_order: meters.filter((m) => m.meter_type === formModal.meter_type).length,
-        });
-        if (error) throw error;
-        setMsg({ type: 'ok', text: `${payload.name} sayacı eklendi.` });
-      }
+      await saveMeter(
+        formModal.id,
+        payload,
+        meters.filter((m) => m.meter_type === formModal.meter_type).length
+      );
+      setMsg({
+        type: 'ok',
+        text: formModal.id
+          ? `${payload.name} sayacı güncellendi.`
+          : `${payload.name} sayacı eklendi.`,
+      });
       setFormModal(null);
       await loadAll();
     } catch (err) {
@@ -215,9 +194,7 @@ export default function EnergyMetersPage() {
     }
     setMsg(null);
     try {
-      const supabase = createClient();
-      const { error } = await supabase.rpc('rpc_soft_delete_meter', { p_meter_id: m.id });
-      if (error) throw error;
+      await softDeleteMeter(m.id);
       setMsg({
         type: 'ok',
         text: `"${m.name}" sayacı çöp kutusuna taşındı. 1 ay içinde Çöp Kutusu'ndan geri getirebilirsiniz.`,
@@ -232,9 +209,7 @@ export default function EnergyMetersPage() {
     if (!isAdmin) return;
     setMsg(null);
     try {
-      const supabase = createClient();
-      const { error } = await supabase.rpc('rpc_restore_meter', { p_meter_id: m.id });
-      if (error) throw error;
+      await restoreMeter(m.id);
       setMsg({
         type: 'ok',
         text: `"${m.name}" sayacı ve ${m.readings_count} okuma kaydı başarıyla geri getirildi.`,
@@ -256,11 +231,7 @@ export default function EnergyMetersPage() {
     }
     setMsg(null);
     try {
-      const supabase = createClient();
-      const { error } = await supabase.rpc('rpc_permanently_delete_meter', {
-        p_meter_id: m.id,
-      });
-      if (error) throw error;
+      await permanentlyDeleteMeter(m.id);
       setMsg({ type: 'ok', text: `"${m.name}" sayacı kalıcı olarak silindi.` });
       await loadAll();
     } catch (err) {

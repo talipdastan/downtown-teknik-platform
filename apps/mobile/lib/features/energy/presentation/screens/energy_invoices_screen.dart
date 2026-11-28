@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,6 +15,7 @@ import 'package:avm_tech_platform/features/energy/data/models/budget_model.dart'
 import 'package:avm_tech_platform/features/energy/data/models/invoice_model.dart';
 import 'package:avm_tech_platform/features/energy/data/models/meter_model.dart';
 import 'package:avm_tech_platform/features/energy/providers/energy_providers.dart';
+import 'package:avm_tech_platform/features/energy/presentation/widgets/energy_budget_tab.dart';
 import 'package:avm_tech_platform/features/energy/presentation/widgets/energy_report_wizard_sheet.dart';
 import 'package:avm_tech_platform/features/energy/services/budget_parser_service.dart';
 import 'package:avm_tech_platform/features/energy/services/energy_excel_service.dart';
@@ -67,45 +66,6 @@ class _EnergyInvoicesScreenState extends ConsumerState<EnergyInvoicesScreen>
         return 'Su';
       default:
         return type;
-    }
-  }
-
-  static IconData _utilityIcon(String type) {
-    switch (type.toLowerCase()) {
-      case 'electric':
-        return Icons.bolt_rounded;
-      case 'gas':
-        return Icons.local_fire_department_rounded;
-      case 'water':
-        return Icons.water_drop_rounded;
-      default:
-        return Icons.analytics_outlined;
-    }
-  }
-
-  static Color _utilityColor(String type) {
-    switch (type.toLowerCase()) {
-      case 'electric':
-        return AppColors.priorityHigh;
-      case 'gas':
-        return AppColors.priorityUrgent;
-      case 'water':
-        return AppColors.statusNew;
-      default:
-        return AppColors.primaryNavy;
-    }
-  }
-
-  static Color _utilitySoftBg(String type) {
-    switch (type.toLowerCase()) {
-      case 'electric':
-        return AppColors.electricSoft;
-      case 'gas':
-        return AppColors.gasSoft;
-      case 'water':
-        return AppColors.waterSoft;
-      default:
-        return AppColors.primarySoft;
     }
   }
 
@@ -639,7 +599,27 @@ class _EnergyInvoicesScreenState extends ConsumerState<EnergyInvoicesScreen>
             _buildTableTab(invoices, budgets, meters, canManage),
             _buildPdfTab(meters, invoices, canManage),
             _buildMetersConfigTab(meters, canManage),
-            _buildBudgetTab(invoices, budgets, meters, canManage),
+            EnergyBudgetTab(
+              selectedYear: _selectedYear,
+              budgetMonth: _budgetMonth,
+              budgetUtilityFilter: _budgetUtilityFilter,
+              months: _months,
+              invoices: invoices,
+              budgets: budgets,
+              meters: meters,
+              canManage: canManage,
+              importingBudget: _importingBudget,
+              numFmt: _numFmt,
+              tlFmt: _tlFmt,
+              onYearChanged: (v) => setState(() => _selectedYear = v),
+              onMonthChanged: (v) => setState(() => _budgetMonth = v),
+              onUtilityFilterChanged: (v) =>
+                  setState(() => _budgetUtilityFilter = v),
+              onImportBudgetFile: _importBudgetFile,
+              onOpenBudgetForm: (existing) =>
+                  _openBudgetFormDialog(existing: existing),
+              onDeleteBudget: _deleteBudget,
+            ),
           ],
         ),
       ),
@@ -996,362 +976,6 @@ class _EnergyInvoicesScreenState extends ConsumerState<EnergyInvoicesScreen>
           ),
         );
       },
-    );
-  }
-
-  Widget _buildBudgetTab(
-    List<EnergyInvoiceModel> invoices,
-    List<EnergyBudgetModel> budgets,
-    List<MeterModel> meters,
-    bool canManage,
-  ) {
-    final currentYear = DateTime.now().year;
-    final years = [currentYear - 2, currentYear - 1, currentYear, currentYear + 1];
-    final filteredBudgets = budgets.where((b) {
-      if (_budgetMonth != 0 && b.periodMonth != _budgetMonth) return false;
-      if (_budgetUtilityFilter != 'all' &&
-          b.utilityType != _budgetUtilityFilter) {
-        return false;
-      }
-      return true;
-    }).toList()
-      ..sort((a, b) {
-        final cmp = a.periodMonth.compareTo(b.periodMonth);
-        return cmp != 0 ? cmp : a.utilityType.compareTo(b.utilityType);
-      });
-
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
-      children: [
-        // Dönem Seçici (Yıl + Ay)
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<int>(
-                    initialValue: years.contains(_selectedYear)
-                        ? _selectedYear
-                        : currentYear,
-                    decoration: const InputDecoration(labelText: 'Yıl'),
-                    items: years
-                        .map((y) => DropdownMenuItem(value: y, child: Text('$y')))
-                        .toList(),
-                    onChanged: (v) {
-                      if (v != null) setState(() => _selectedYear = v);
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  flex: 2,
-                  child: DropdownButtonFormField<int>(
-                    initialValue: _budgetMonth,
-                    decoration: const InputDecoration(labelText: 'Dönem (Ay)'),
-                    items: List.generate(
-                      _months.length,
-                      (idx) => DropdownMenuItem(
-                        value: idx,
-                        child: Text(_months[idx]),
-                      ),
-                    ),
-                    onChanged: (v) {
-                      if (v != null) setState(() => _budgetMonth = v);
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-
-        // Türkçe Tür Filtre Çipleri
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              for (final entry in const [
-                ('all', 'Tümü'),
-                ('electric', 'Elektrik'),
-                ('gas', 'Doğalgaz'),
-                ('water', 'Su'),
-              ]) ...[
-                ChoiceChip(
-                  label: Text(
-                    entry.$2,
-                    style: TextStyle(
-                      color: _budgetUtilityFilter == entry.$1
-                          ? Colors.white
-                          : AppColors.textPrimary,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
-                    ),
-                  ),
-                  selected: _budgetUtilityFilter == entry.$1,
-                  backgroundColor: AppColors.white,
-                  selectedColor: AppColors.primaryNavy,
-                  checkmarkColor: Colors.white,
-                  side: BorderSide(
-                    color: _budgetUtilityFilter == entry.$1
-                        ? AppColors.primaryNavy
-                        : AppColors.border,
-                  ),
-                  onSelected: (_) =>
-                      setState(() => _budgetUtilityFilter = entry.$1),
-                ),
-                const SizedBox(width: 6),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: (budgets.isEmpty && invoices.isEmpty)
-                        ? null
-                        : () => showEnergyReportWizardSheet(
-                              context,
-                              initialYear: _selectedYear,
-                              initialMonth: _budgetMonth,
-                              initialUtilityFilter: _budgetUtilityFilter,
-                              initialPreset: 'budget_matrix',
-                              invoices: invoices,
-                              budgets: budgets,
-                              meters: meters,
-                            ),
-                    icon: const Icon(Icons.tune_rounded, size: 18),
-                    label: const Text(
-                      'Rapor Sihirbazı (Tarih & Veri Seç)',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  onPressed: (budgets.isEmpty && invoices.isEmpty)
-                      ? null
-                      : () => EnergyExcelService.exportMonthlyInvoicesReport(
-                            context,
-                            year: _selectedYear,
-                            invoices: invoices,
-                            budgets: budgets,
-                            config: EnergyReportExportConfig.defaults(
-                              year: _selectedYear,
-                              selectedMonth: _budgetMonth,
-                              utilityFilter: _budgetUtilityFilter,
-                              preset: 'budget_matrix',
-                            ),
-                          ),
-                  icon: const Icon(Icons.download_outlined, size: 18),
-                  label: const Text('Matris Excel'),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-
-        if (canManage)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: _importingBudget ? null : _importBudgetFile,
-                          icon: const Icon(Icons.upload_outlined, size: 18),
-                          label: Text(
-                            _importingBudget ? 'Aktarılıyor...' : 'Bütçe Yükle',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () {
-                            final bytes =
-                                BudgetParserService.generateSampleBudgetExcel(
-                                    _selectedYear);
-                            EnergyExcelService.shareOrDownloadExcel(
-                              bytes: Uint8List.fromList(bytes),
-                              fileName: 'Ornek_Butce_Sablonu_$_selectedYear.xlsx',
-                              text: 'Örnek Bütçe Şablonu',
-                            );
-                          },
-                          icon: const Icon(Icons.table_view_outlined, size: 18),
-                          label: const Text(
-                            'Örnek Şablon',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => _openBudgetFormDialog(),
-                      icon: const Icon(Icons.add_rounded, size: 18),
-                      label: const Text('Manuel Bütçe Ekle'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        const SizedBox(height: 10),
-        if (filteredBudgets.isEmpty)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Center(
-                child: Text(
-                  'Seçili dönem ($_selectedYear · ${_months[_budgetMonth]}) için bütçe kaydı yok.',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppColors.textSecondary),
-                ),
-              ),
-            ),
-          )
-        else
-          ...filteredBudgets.map((b) {
-            final matchingInvoices = invoices.where((i) =>
-                i.utilityType == b.utilityType &&
-                i.periodMonth == b.periodMonth);
-            final actualTL =
-                matchingInvoices.fold<double>(0, (s, e) => s + e.commonAmountTL);
-            final actualQty = matchingInvoices.fold<double>(
-                0, (s, e) => s + e.commonConsumption);
-            final unit = b.utilityType == 'electric' ? 'kWh' : 'm³';
-            final tlPct = EnergyBudgetModel.variancePercent(actualTL, b.budgetTL);
-            final qtyPct = EnergyBudgetModel.variancePercent(
-                actualQty, b.budgetConsumption);
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 34,
-                            height: 34,
-                            decoration: BoxDecoration(
-                              color: _utilitySoftBg(b.utilityType),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(
-                              _utilityIcon(b.utilityType),
-                              color: _utilityColor(b.utilityType),
-                              size: 18,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              '${_utilityLabel(b.utilityType)} – ${_months[b.periodMonth]} $_selectedYear',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 13.5,
-                              ),
-                            ),
-                          ),
-                          if (tlPct != null) ...[
-                            const SizedBox(width: 4),
-                            StatusChip(
-                              label:
-                                  '${tlPct >= 0 ? '+' : ''}${tlPct.toStringAsFixed(1)}%',
-                              color: tlPct > 0
-                                  ? AppColors.priorityUrgent
-                                  : AppColors.statusResolved,
-                            ),
-                          ],
-                          if (canManage) ...[
-                            IconButton(
-                              visualDensity: VisualDensity.compact,
-                              constraints: const BoxConstraints(
-                                minWidth: 32,
-                                minHeight: 32,
-                              ),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Düzenle',
-                              icon: const Icon(Icons.edit_outlined, size: 18),
-                              onPressed: () =>
-                                  _openBudgetFormDialog(existing: b),
-                            ),
-                            IconButton(
-                              visualDensity: VisualDensity.compact,
-                              constraints: const BoxConstraints(
-                                minWidth: 32,
-                                minHeight: 32,
-                              ),
-                              padding: EdgeInsets.zero,
-                              tooltip: 'Sil',
-                              icon: const Icon(
-                                Icons.delete_outline,
-                                size: 18,
-                                color: AppColors.priorityUrgent,
-                              ),
-                              onPressed: () => _deleteBudget(b),
-                            ),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              'Miktar: ${_numFmt.format(b.budgetConsumption)} $unit\nGerçek: ${_numFmt.format(actualQty)} $unit${qtyPct != null ? ' (${qtyPct >= 0 ? '+' : ''}${qtyPct.toStringAsFixed(1)}%)' : ''}',
-                              style: const TextStyle(
-                                fontSize: 11.5,
-                                color: AppColors.textSecondary,
-                                height: 1.35,
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            child: Text(
-                              'Bütçe: ${_tlFmt.format(b.budgetTL)} ₺\nGerçek: ${_tlFmt.format(actualTL)} ₺',
-                              textAlign: TextAlign.right,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.textPrimary,
-                                height: 1.35,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }),
-      ],
     );
   }
 }

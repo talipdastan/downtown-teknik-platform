@@ -72,3 +72,27 @@ for (const [selectName, ifaceName] of BINDINGS) {
     );
   });
 }
+
+const CORE_DECOUPLED_PAGES = [
+  'src/app/(dashboard)/energy/page.tsx',
+  'src/app/(dashboard)/energy/meters/page.tsx',
+  'src/app/(dashboard)/energy/readings/page.tsx',
+  'src/app/(dashboard)/energy/invoices/page.tsx',
+  'src/app/(dashboard)/energy/budgets/page.tsx',
+  'src/app/(dashboard)/work-tracking/page.tsx',
+  'src/app/(dashboard)/work-tracking/tickets/page.tsx',
+  'src/app/(dashboard)/work-tracking/work-orders/page.tsx',
+  'src/app/(dashboard)/work-tracking/review/page.tsx',
+  'src/app/(dashboard)/work-tracking/reports/page.tsx',
+];
+
+test('Enerji Takip ve İş Takip sayfaları doğrudan supabase.from/rpc çağırmamalı (queries.ts katmanı zorunlu)', () => {
+  for (const relPath of CORE_DECOUPLED_PAGES) {
+    const src = readFileSync(resolve(process.cwd(), relPath), 'utf8');
+    assert.equal(
+      /supabase\.(from|rpc)\(/.test(src),
+      false,
+      `${relPath} içinde doğrudan supabase.from()/rpc() çağrısı bulundu — features/*/queries.ts kullanın.`
+    );
+  }
+});

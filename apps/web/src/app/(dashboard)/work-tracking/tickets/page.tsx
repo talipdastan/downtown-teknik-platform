@@ -15,8 +15,17 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { createClient } from '@/core/supabase/client';
-import { EQUIPMENT_SELECT } from '@/core/supabase/selects';
+import {
+  createTicketWithPhotos,
+  deleteTicket,
+  fetchTicketDetail,
+  fetchTicketLookups,
+  fetchTicketsPage,
+  managerCloseTicket,
+  postTicketComment,
+  updateTicket,
+  uploadTicketDetailPhoto,
+} from '@/features/work-tracking/queries';
 import { useDebouncedRealtime } from '@/core/hooks/useDebouncedRealtime';
 import {
   CreateTicketModal,
@@ -31,7 +40,6 @@ import {
   exportPrintablePdf,
   ReportCell,
 } from '@/core/utils/report-export';
-import { compressImageForUpload } from '@/core/utils/image-compress';
 import {
   Equipment,
   TicketPriority,
@@ -39,11 +47,9 @@ import {
 } from '@/types/database';
 import {
   AttachmentView,
-  generateUUID,
   LinkedWO,
   Lookup,
   priorityBadgeClass,
-  sanitizeFileName,
   statusBadgeClass,
   TICKET_PAGE_SIZE as PAGE_SIZE,
   TicketRow,
@@ -112,17 +118,11 @@ export default function WorkTrackingTicketsPage() {
 
   const loadLookups = useCallback(async () => {
     try {
-      const supabase = createClient();
-      const [fRes, lRes, cRes, eRes] = await Promise.all([
-        supabase.from('floors').select('id, name').eq('is_active', true).order('sort_order'),
-        supabase.from('locations').select('id, name, floor_id').eq('is_active', true).order('name'),
-        supabase.from('categories').select('id, name').eq('is_active', true).order('name'),
-        supabase.from('equipments').select(EQUIPMENT_SELECT).eq('is_active', true).order('name').limit(300),
-      ]);
-      if (fRes.data) setFloors(fRes.data);
-      if (lRes.data) setLocations(lRes.data);
-      if (cRes.data) setCategories(cRes.data);
-      if (eRes.data) setEquipments(eRes.data as Equipment[]);
+      const data = await fetchTicketLookups();
+      setFloors(data.floors);
+      setLocations(data.locations);
+      setCategories(data.categories);
+      setEquipments(data.equipments);
     } catch {
       // ignore
     }
@@ -131,23 +131,13 @@ export default function WorkTrackingTicketsPage() {
   const { data: rows = [], isLoading: loading } = useQuery({
     queryKey: ['wt', 'tickets', { page, statusFilter, priorityFilter }],
     placeholderData: (prev) => prev,
-    queryFn: async () => {
-      const supabase = createClient();
-      let q = supabase
-        .from('tickets')
-        .select(
-          'id, ticket_number, reporter_id, location_id, category_id, description, priority, status, cancellation_reason, created_at, custom_location, custom_category, equipment_id, locations(id, name, floor_id, floors(name)), categories(id, name), equipments(code, name), profiles!tickets_reporter_id_fkey(full_name)'
-        )
-        .order('created_at', { ascending: false })
-        .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
-
-      if (statusFilter) q = q.eq('status', statusFilter);
-      if (priorityFilter) q = q.eq('priority', priorityFilter);
-
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data as unknown as TicketRow[]) ?? [];
-    },
+    queryFn: () =>
+      fetchTicketsPage({
+        page,
+        pageSize: PAGE_SIZE,
+        statusFilter,
+        priorityFilter,
+      }),
   });
 
   const loadTickets = useCallback(async () => {
@@ -168,33 +158,6 @@ export default function WorkTrackingTicketsPage() {
     if (floors.length === 0) await loadLookups();
   }
 
-  async function uploadTicketPhoto(
-    ticketId: string,
-    uid: string,
-    rawFile: File,
-    attType: 'before' | 'after' | 'general'
-  ) {
-    const supabase = createClient();
-    const file = await compressImageForUpload(rawFile);
-    const safe = sanitizeFileName(file.name || 'foto.webp');
-    const path = `${uid}/${ticketId}/${Date.now()}_${safe}`;
-
-    const { error: upErr } = await supabase.storage
-      .from('work-attachments')
-      .upload(path, file, { contentType: file.type || 'image/webp', upsert: false });
-    if (upErr) throw upErr;
-
-    const { error: dbErr } = await supabase.from('attachments').insert({
-      ticket_id: ticketId,
-      uploaded_by: uid,
-      file_path: path,
-      file_name: file.name,
-      mime_type: file.type || 'image/webp',
-      attachment_type: attType,
-    });
-    if (dbErr) throw dbErr;
-  }
-
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     const isOtherLoc = locationId === '__other__';
@@ -213,12 +176,6 @@ export default function WorkTrackingTicketsPage() {
     setCreating(true);
     setMsg(null);
     try {
-      const supabase = createClient();
-      const { data: userRes } = await supabase.auth.getUser();
-      const uid = userRes.user?.id;
-      if (!uid) throw new Error('Oturum bulunamadı.');
-
-      const ticketId = generateUUID();
       const floorName = floors.find((f) => f.id === floorId)?.name;
       const finalCustomLoc = isOtherLoc
         ? floorName
@@ -226,24 +183,16 @@ export default function WorkTrackingTicketsPage() {
           : customLocation.trim()
         : null;
 
-      const { error } = await supabase.from('tickets').insert({
-        id: ticketId,
-        reporter_id: uid,
-        location_id: isOtherLoc ? null : locationId,
-        custom_location: finalCustomLoc,
-        category_id: isOtherCat ? null : categoryId,
-        custom_category: isOtherCat ? customCategory.trim() : null,
-        equipment_id: equipmentId || null,
+      const uploadedCount = await createTicketWithPhotos({
+        locationId: isOtherLoc ? null : locationId,
+        customLocation: finalCustomLoc,
+        categoryId: isOtherCat ? null : categoryId,
+        customCategory: isOtherCat ? customCategory.trim() : null,
+        equipmentId: equipmentId || null,
         priority,
         description: description.trim(),
+        photos: newPhotos,
       });
-      if (error) throw error;
-
-      let uploadedCount = 0;
-      for (const file of newPhotos) {
-        await uploadTicketPhoto(ticketId, uid, file, 'before');
-        uploadedCount++;
-      }
 
       setShowNew(false);
       setDescription('');
@@ -289,20 +238,15 @@ export default function WorkTrackingTicketsPage() {
     setSavingEdit(true);
     setMsg(null);
     try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from('tickets')
-        .update({
-          priority: editPriority,
-          status: editStatus,
-          location_id: editLocationId || null,
-          category_id: editCategoryId || null,
-          equipment_id: editEquipmentId || null,
-          description: editDescription.trim(),
-          cancellation_reason: editCancelReason.trim() || null,
-        })
-        .eq('id', editTarget.id);
-      if (error) throw error;
+      await updateTicket(editTarget.id, {
+        priority: editPriority,
+        status: editStatus,
+        location_id: editLocationId || null,
+        category_id: editCategoryId || null,
+        equipment_id: editEquipmentId || null,
+        description: editDescription.trim(),
+        cancellation_reason: editCancelReason.trim() || null,
+      });
 
       setEditTarget(null);
       setMsg({ type: 'ok', text: 'Arıza kaydı güncellendi.' });
@@ -324,9 +268,7 @@ export default function WorkTrackingTicketsPage() {
     }
     setMsg(null);
     try {
-      const supabase = createClient();
-      const { error } = await supabase.from('tickets').delete().eq('id', t.id);
-      if (error) throw error;
+      await deleteTicket(t.id);
       setMsg({ type: 'ok', text: `${label} arıza kaydı silindi.` });
       await loadTickets();
     } catch (err) {
@@ -345,116 +287,10 @@ export default function WorkTrackingTicketsPage() {
     setDetailWOs([]);
     setNewComment('');
     try {
-      const supabase = createClient();
-      const [woRes, histRes, commRes, ticketAttRes] = await Promise.all([
-        supabase
-          .from('work_orders')
-          .select('id, status, work_description, created_at, departments(name)')
-          .eq('ticket_id', t.id)
-          .order('created_at', { ascending: true }),
-        supabase
-          .from('status_history')
-          .select('id, old_status, new_status, change_note, created_at, profiles(full_name)')
-          .eq('ticket_id', t.id)
-          .order('created_at', { ascending: true }),
-        supabase
-          .from('comments')
-          .select('id, comment, created_at, profiles(full_name)')
-          .eq('ticket_id', t.id)
-          .order('created_at', { ascending: true }),
-        supabase
-          .from('attachments')
-          .select('id, file_path, file_name, attachment_type, created_at')
-          .eq('ticket_id', t.id)
-          .order('created_at', { ascending: true }),
-      ]);
-
-      const wos = (woRes.data as unknown as LinkedWO[]) ?? [];
-      setDetailWOs(wos);
-
-      let woAtts: AttachmentView[] = [];
-      if (wos.length > 0) {
-        const { data: wAttData } = await supabase
-          .from('attachments')
-          .select('id, file_path, file_name, attachment_type, created_at')
-          .in(
-            'work_order_id',
-            wos.map((w) => w.id)
-          )
-          .order('created_at', { ascending: true });
-        woAtts = (wAttData as AttachmentView[]) ?? [];
-      }
-
-      const combinedAtts = [
-        ...((ticketAttRes.data as AttachmentView[]) ?? []),
-        ...woAtts,
-      ];
-
-      if (combinedAtts.length > 0) {
-        const paths = combinedAtts.map((a) => a.file_path);
-        const { data: signedData } = await supabase.storage
-          .from('work-attachments')
-          .createSignedUrls(paths, 3600);
-        const urlMap = new Map<string, string>();
-        for (const s of signedData ?? []) {
-          if (s.path && s.signedUrl) urlMap.set(s.path, s.signedUrl);
-        }
-        setDetailAttachments(
-          combinedAtts.map((a) => ({ ...a, signedUrl: urlMap.get(a.file_path) }))
-        );
-      }
-
-      const histEvents: TimelineEvent[] = (
-        (histRes.data as unknown as Array<{
-          id: string;
-          old_status: TicketStatus | null;
-          new_status: TicketStatus;
-          change_note: string | null;
-          created_at: string;
-          profiles?: { full_name: string } | null;
-        }>) ?? []
-      ).map((h) => ({
-        id: `h_${h.id}`,
-        kind: 'status',
-        created_at: h.created_at,
-        actor: h.profiles?.full_name || 'Sistem',
-        title: h.old_status
-          ? `Durum: ${TICKET_STATUS_LABELS[h.old_status] ?? h.old_status} → ${
-              TICKET_STATUS_LABELS[h.new_status] ?? h.new_status
-            }`
-          : `Durum: ${TICKET_STATUS_LABELS[h.new_status] ?? h.new_status}`,
-        detail: h.change_note,
-      }));
-
-      const commentEvents: TimelineEvent[] = (
-        (commRes.data as unknown as Array<{
-          id: string;
-          comment: string;
-          created_at: string;
-          profiles?: { full_name: string } | null;
-        }>) ?? []
-      ).map((c) => ({
-        id: `c_${c.id}`,
-        kind: 'comment',
-        created_at: c.created_at,
-        actor: c.profiles?.full_name || 'Kullanıcı',
-        title: 'Yorum / Not',
-        detail: c.comment,
-      }));
-
-      const initialEvent: TimelineEvent = {
-        id: `open_${t.id}`,
-        kind: 'status',
-        created_at: t.created_at,
-        actor: t.profiles?.full_name || 'Bildiren',
-        title: 'Arıza Kaydı Oluşturuldu',
-        detail: t.description,
-      };
-
-      const merged = [initialEvent, ...histEvents, ...commentEvents].sort(
-        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-      );
-      setDetailTimeline(merged);
+      const detail = await fetchTicketDetail(t);
+      setDetailWOs(detail.workOrders);
+      setDetailAttachments(detail.attachments);
+      setDetailTimeline(detail.timeline);
     } catch (err) {
       setMsg({
         type: 'err',
@@ -470,16 +306,7 @@ export default function WorkTrackingTicketsPage() {
     if (!detailTarget || !newComment.trim()) return;
     setPostingComment(true);
     try {
-      const supabase = createClient();
-      const { data: userRes } = await supabase.auth.getUser();
-      const uid = userRes.user?.id;
-      if (!uid) throw new Error('Oturum bulunamadı.');
-      const { error } = await supabase.from('comments').insert({
-        ticket_id: detailTarget.id,
-        user_id: uid,
-        comment: newComment.trim(),
-      });
-      if (error) throw error;
+      await postTicketComment(detailTarget.id, newComment.trim());
       setNewComment('');
       await loadDetail(detailTarget);
     } catch (err) {
@@ -497,11 +324,7 @@ export default function WorkTrackingTicketsPage() {
     if (!file || !detailTarget) return;
     setUploadingDetailPhoto(true);
     try {
-      const supabase = createClient();
-      const { data: userRes } = await supabase.auth.getUser();
-      const uid = userRes.user?.id;
-      if (!uid) throw new Error('Oturum bulunamadı.');
-      await uploadTicketPhoto(detailTarget.id, uid, file, 'general');
+      await uploadTicketDetailPhoto(detailTarget.id, file);
       await loadDetail(detailTarget);
     } catch (err) {
       setMsg({
@@ -520,13 +343,11 @@ export default function WorkTrackingTicketsPage() {
       : 'Web panelinden onaylanarak kapatıldı.';
     if (reopen && !note.trim()) return;
     try {
-      const supabase = createClient();
-      const { error } = await supabase.rpc('rpc_manager_close_ticket', {
-        p_ticket_id: ticketId,
-        p_resolution_note: note.trim(),
-        p_reopen: reopen,
+      await managerCloseTicket({
+        ticketId,
+        resolutionNote: note.trim(),
+        reopen,
       });
-      if (error) throw error;
       setMsg({
         type: 'ok',
         text: reopen ? 'Kayıt teknisyene iade edildi.' : 'Arıza onaylanarak kapatıldı.',

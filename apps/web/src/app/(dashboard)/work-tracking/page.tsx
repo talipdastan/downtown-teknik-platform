@@ -10,29 +10,11 @@ import {
   Layers,
   RefreshCw,
 } from 'lucide-react';
-import { createClient } from '@/core/supabase/client';
+import { fetchWorkTrackingOverview } from '@/features/work-tracking/queries';
 import { useDebouncedRealtime } from '@/core/hooks/useDebouncedRealtime';
 import { formatDateTime, PRIORITY_LABELS, TICKET_STATUS_LABELS } from '@/core/constants';
 import { useDashboardAuth } from '@/core/DashboardContext';
 import { canAccessDashboardPath } from '@/core/moduleRegistry';
-import { TicketPriority, TicketStatus } from '@/types/database';
-
-type RecentTicket = {
-  id: string;
-  ticket_number: string | null;
-  reporter_id: string;
-  description: string;
-  priority: TicketPriority;
-  status: TicketStatus;
-  created_at: string;
-  custom_location: string | null;
-  custom_category: string | null;
-  locations?: { name: string; floors?: { name: string } | null } | null;
-  categories?: { name: string } | null;
-  equipments?: { code: string; name: string } | null;
-  profiles?: { full_name: string } | null;
-};
-
 const WEEKDAY_NAMES = ['Pzt', 'Salı', 'Çrş', 'Prş', 'Cuma', 'Cmt', 'Pzr'];
 
 function isSameLocalDay(a: Date, b: Date): boolean {
@@ -64,70 +46,7 @@ export default function WorkTrackingOverviewPage() {
 
   const overviewQuery = useQuery({
     queryKey: ['work-tracking', 'overview'],
-    queryFn: async () => {
-      const supabase = createClient();
-      const [recRes, summaryRes] = await Promise.all([
-        supabase
-          .from('tickets')
-          .select(
-            'id, ticket_number, reporter_id, description, priority, status, created_at, custom_location, custom_category, locations(name, floors(name)), categories(name), equipments(code, name), profiles!tickets_reporter_id_fkey(full_name)'
-          )
-          .order('created_at', { ascending: false })
-          .limit(50),
-        supabase.rpc('rpc_work_tracking_dashboard_summary'),
-      ]);
-
-      if (recRes.error) throw recRes.error;
-      const recentList = (recRes.data as unknown as RecentTicket[]) ?? [];
-
-      const summaryRow = Array.isArray(summaryRes.data)
-        ? (summaryRes.data[0] as Record<string, number> | undefined)
-        : (summaryRes.data as Record<string, number> | null);
-
-      if (!summaryRes.error && summaryRow) {
-        return {
-          recent: recentList,
-          unassignedCount: Number(summaryRow.unassigned_count ?? 0),
-          inFieldCount: Number(summaryRow.in_field_count ?? 0),
-          awaitingApprovalCount: Number(summaryRow.awaiting_approval_count ?? 0),
-          closedTotal: Number(summaryRow.closed_count ?? 0),
-          urgentOpenCount: Number(summaryRow.urgent_open_count ?? 0),
-        };
-      }
-
-      const [unassignedRes, inFieldRes, resolvedRes, closedRes, urgentRes] =
-        await Promise.all([
-          supabase
-            .from('tickets')
-            .select('id', { count: 'exact', head: true })
-            .in('status', ['new', 'under_review']),
-          supabase
-            .from('tickets')
-            .select('id', { count: 'exact', head: true })
-            .in('status', ['assigned', 'in_progress', 'waiting']),
-          supabase
-            .from('tickets')
-            .select('id', { count: 'exact', head: true })
-            .eq('status', 'resolved'),
-          supabase
-            .from('tickets')
-            .select('id', { count: 'exact', head: true })
-            .eq('status', 'closed'),
-          supabase
-            .from('tickets')
-            .select('id', { count: 'exact', head: true })
-            .eq('priority', 'urgent')
-            .not('status', 'in', '("closed","cancelled")'),
-        ]);
-      return {
-        recent: recentList,
-        unassignedCount: unassignedRes.count ?? 0,
-        inFieldCount: inFieldRes.count ?? 0,
-        awaitingApprovalCount: resolvedRes.count ?? 0,
-        closedTotal: closedRes.count ?? 0,
-        urgentOpenCount: urgentRes.count ?? 0,
-      };
-    },
+    queryFn: fetchWorkTrackingOverview,
   });
 
   const loadOverview = () => {

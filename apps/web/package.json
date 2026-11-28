@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "gen:types": "npx supabase gen types typescript --db-url \"$DATABASE_URL\" > src/types/supabase.generated.ts",
     "test": "node --test tests/permissions_and_modules.test.mjs tests/energy_readings.test.mjs tests/work_order_and_ticket_helpers.test.mjs tests/budget_and_cmms_helpers.test.mjs tests/selects_schema_guard.test.mjs"
   },
   "dependencies": {

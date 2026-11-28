@@ -13,7 +13,10 @@ import {
   TrendingUp,
   Zap,
 } from 'lucide-react';
-import { createClient } from '@/core/supabase/client';
+import {
+  fetchEnergyOverview,
+  setupDefaultMeters,
+} from '@/features/energy/queries';
 import { formatDate, formatDateTime } from '@/core/constants';
 import { useDashboardAuth } from '@/core/DashboardContext';
 import { hasModulePermission } from '@/core/permissions';
@@ -159,59 +162,7 @@ export default function EnergyOverviewPage() {
 
   const summaryQuery = useQuery({
     queryKey: ['energy', 'overview', year, month],
-    queryFn: async () => {
-      const supabase = createClient();
-      const since = new Date();
-      since.setDate(since.getDate() - 30);
-
-      const [sumRes, recRes, healthRes, anomRes] = await Promise.all([
-        supabase.rpc('rpc_energy_dashboard_summary', {
-          p_year: year,
-          p_month: month,
-        }),
-        supabase
-          .from('meter_readings')
-          .select('reading_date, meter_id, consumption, meters!inner(name, meter_type, category, deleted_at)')
-          .is('meters.deleted_at', null)
-          .gte('reading_date', since.toISOString())
-          .order('reading_date', { ascending: true })
-          .limit(1000),
-        supabase.rpc('rpc_get_energy_reading_health', {
-          p_year: year,
-          p_month: month,
-        }),
-        supabase.rpc('rpc_get_energy_anomalies', { p_threshold_pct: 35 }),
-      ]);
-      if (sumRes.error) throw sumRes.error;
-      const healthAll =
-        !healthRes.error && Array.isArray(healthRes.data)
-          ? (healthRes.data as Array<{
-              meter_id: string;
-              meter_name: string;
-              category: string;
-              has_reading_this_month: boolean;
-            }>)
-          : [];
-      const anomalies =
-        !anomRes.error && Array.isArray(anomRes.data)
-          ? (anomRes.data as Array<{
-              meter_id: string;
-              meter_name: string;
-              meter_type: string;
-              latest_date: string;
-              latest_consumption: number;
-              avg_consumption: number;
-              deviation_pct: number;
-            }>)
-          : [];
-      return {
-        items: (sumRes.data as DashboardItem[]) ?? [],
-        recentReadings: (recRes.data as unknown as RecentReadingRow[]) ?? [],
-        totalHealthMeters: healthAll.length,
-        unreadMeters: healthAll.filter((x) => !x.has_reading_this_month),
-        anomalies,
-      };
-    },
+    queryFn: () => fetchEnergyOverview(year, month),
   });
 
   const items = useMemo(() => summaryQuery.data?.items ?? [], [summaryQuery.data]);
@@ -237,9 +188,7 @@ export default function EnergyOverviewPage() {
     setSettingUp(true);
     setSetupError(null);
     try {
-      const supabase = createClient();
-      const { error: rpcErr } = await supabase.rpc('rpc_setup_default_meters');
-      if (rpcErr) throw rpcErr;
+      await setupDefaultMeters();
       await queryClient.invalidateQueries({ queryKey: ['energy', 'overview'] });
     } catch (err) {
       setSetupError(err instanceof Error ? err.message : 'Sayaçlar kurulamadı.');

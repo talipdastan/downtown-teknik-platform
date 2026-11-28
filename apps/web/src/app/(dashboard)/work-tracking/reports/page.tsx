@@ -9,7 +9,7 @@ import {
   Users,
   Wrench,
 } from 'lucide-react';
-import { createClient } from '@/core/supabase/client';
+import { fetchWorkTrackingReports } from '@/features/work-tracking/queries';
 import { formatDate, formatDateTime, PRIORITY_LABELS, TICKET_STATUS_LABELS } from '@/core/constants';
 import {
   exportExcelXml,
@@ -146,61 +146,7 @@ export default function WorkTrackingReportsPage() {
   } = useQuery({
     queryKey: ['wt', 'reports', { startDate, endDate }],
     placeholderData: (prev) => prev,
-    queryFn: async () => {
-      const supabase = createClient();
-      const CHUNK_SIZE = 1000;
-      const MAX_ROWS = 5000;
-      const collected: RawReportTicket[] = [];
-      let exactTotal: number | null = null;
-
-      for (let offset = 0; offset < MAX_ROWS; offset += CHUNK_SIZE) {
-        let q = supabase
-          .from('tickets')
-          .select(
-            'ticket_number, priority, status, created_at, resolved_at, closed_at, custom_location, custom_category, profiles!tickets_reporter_id_fkey(full_name), locations(name, floors(name)), categories(name, departments(name)), equipments(code, name), work_orders(id, status, started_at, completed_at, completer:profiles!work_orders_completed_by_fkey(full_name), departments(name), work_order_assignments(user_id, profiles!work_order_assignments_user_id_fkey(full_name)))',
-            offset === 0 ? { count: 'exact' } : undefined
-          )
-          .order('created_at', { ascending: false })
-          .range(offset, offset + CHUNK_SIZE - 1);
-
-        if (startDate) q = q.gte('created_at', `${startDate}T00:00:00`);
-        if (endDate) q = q.lte('created_at', `${endDate}T23:59:59`);
-
-        const { data, count, error: qErr } = await q;
-        if (qErr) throw qErr;
-        if (offset === 0 && typeof count === 'number') {
-          exactTotal = count;
-        }
-        const batch = (data as unknown as RawReportTicket[]) ?? [];
-        collected.push(...batch);
-        if (batch.length < CHUNK_SIZE) break;
-      }
-
-      const mttrRes = await supabase.rpc('rpc_get_work_tracking_mttr_stats', { p_days: 90 });
-      const mttr =
-        !mttrRes.error && mttrRes.data
-          ? (mttrRes.data as {
-              period_days: number;
-              closed_count: number;
-              mttr_minutes: number;
-              sla_total: number;
-              sla_breached: number;
-              sla_compliance_pct: number;
-              top_equipments: Array<{
-                equipment_id: string;
-                equipment_code: string;
-                equipment_name: string;
-                ticket_count: number;
-              }>;
-            })
-          : null;
-
-      return {
-        rawTickets: collected,
-        totalMatchedCount: exactTotal ?? collected.length,
-        mttr,
-      };
-    },
+    queryFn: () => fetchWorkTrackingReports(startDate, endDate),
   });
 
   const rawTickets = useMemo(() => reportData?.rawTickets ?? [], [reportData]);
