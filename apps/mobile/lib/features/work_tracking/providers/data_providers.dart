@@ -87,7 +87,7 @@ final ticketHistoryProvider =
     FutureProvider.autoDispose.family<List<StatusHistoryModel>, String>((ref, id) async {
   final data = await Api.client
       .from('status_history')
-      .select('id, ticket_id, work_order_id, old_status, new_status, changed_by, note, created_at, profiles(full_name)')
+      .select('id, ticket_id, old_status, new_status, changed_by, change_note, created_at, profiles(full_name)')
       .eq('ticket_id', id)
       .order('created_at');
   return _rows(data).map((r) => StatusHistoryModel.fromJson(r)).toList();

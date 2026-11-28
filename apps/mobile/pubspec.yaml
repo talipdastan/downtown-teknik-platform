@@ -1,7 +1,7 @@
 name: avm_tech_platform
 description: "Downtown Teknik – Teknik Operasyon Yönetim Platformu (Mobil)"
 publish_to: "none"
-version: 1.3.6+14
+version: 1.3.7+15
 
 environment:
   sdk: ">=3.4.0 <4.0.0"

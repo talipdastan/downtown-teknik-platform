@@ -7,7 +7,7 @@ export async function GET() {
     {
       status: 'ok',
       service: 'downtown-teknik-web',
-      version: '1.3.6',
+      version: '1.3.7',
       timestamp: new Date().toISOString(),
     },
     {

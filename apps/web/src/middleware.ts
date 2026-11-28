@@ -57,13 +57,15 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    // nginx arkasında Host başlığı `localhost:3000` olarak geldiği için mutlak URL yerine
-    // göreli Location kullanılır; tarayıcı bunu her zaman gerçek adrese göre çözer.
-    const loginPath = `/login?next=${encodeURIComponent(pathname)}`;
-    return new NextResponse(null, {
-      status: 307,
-      headers: { Location: loginPath },
-    });
+    // nginx arkasında request.nextUrl.origin `http://localhost:3000` olarak gelir;
+    // gerçek Host ve X-Forwarded-Proto başlıklarından mutlak yönlendirme URL'si üretilir.
+    const proto = request.headers.get('x-forwarded-proto') || 'http';
+    const host =
+      request.headers.get('x-forwarded-host') || request.headers.get('host');
+    const baseUrl = host ? `${proto}://${host}` : request.nextUrl.origin;
+    const loginUrl = new URL('/login', baseUrl);
+    loginUrl.searchParams.set('next', pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
   return response;

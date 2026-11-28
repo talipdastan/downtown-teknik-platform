@@ -70,11 +70,11 @@ class AppUpdateService {
 
   static const String currentVersion = String.fromEnvironment(
     'APP_VERSION',
-    defaultValue: '1.3.6',
+    defaultValue: '1.3.7',
   );
   static const int currentBuildNumber = int.fromEnvironment(
     'APP_BUILD_NUMBER',
-    defaultValue: 14,
+    defaultValue: 15,
   );
 
   static ({String version, int buildNumber})? _cachedInstalledVersion;

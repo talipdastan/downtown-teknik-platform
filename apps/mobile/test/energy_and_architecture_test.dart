@@ -147,5 +147,17 @@ void main() {
         reason: 'app_update_service.dart currentBuildNumber defaultValue ($expectedBuild) pubspec.yaml ile uyuşmuyor',
       );
     });
+
+    test('status_history sorgusu yalnızca gerçek sütunları (change_note) seçmeli', () {
+      final src = File('lib/features/work_tracking/providers/data_providers.dart')
+          .readAsStringSync();
+      final m = RegExp(r"\.from\('status_history'\)\s*\.select\('([^']+)'\)")
+          .firstMatch(src);
+      expect(m, isNotNull);
+      final cols = m!.group(1)!;
+      expect(cols.contains('change_note'), isTrue);
+      expect(cols.contains('work_order_id'), isFalse);
+      expect(RegExp(r'\bnote\b').hasMatch(cols), isFalse);
+    });
   });
 }

@@ -1,7 +1,7 @@
 {
-  "version": "1.3.6",
-  "buildNumber": 14,
-  "releaseDate": "2026-11-28T17:16:00+03:00",
+  "version": "1.3.7",
+  "buildNumber": 15,
+  "releaseDate": "2026-11-28T18:44:00+03:00",
   "apkUrl": "https://github.com/talipdastan/downtown-teknik-platform/releases/latest/download/downtown-teknik.apk",
   "apkUrls": {
     "arm64-v8a": "https://github.com/talipdastan/downtown-teknik-platform/releases/latest/download/downtown-teknik-arm64-v8a.apk",
@@ -10,7 +10,7 @@
   },
   "mandatory": false,
   "releaseNotes": [
-    "Güncelleme sonrası tekrar güncelleme uyarısı çıkmasına neden olan sürüm okuma hatası kalıcı olarak giderildi (gerçek Android PackageInfo sürümü okunur).",
-    "Enerji Takip ve İş Takip ekranlarında 0 wildcard sorgu, departman/teknisyen çevrimdışı önbellek ve merkezi Repository katmanı."
+    "İş isteği detayında 'Durum Geçmişi' bölümünde oluşan 'column status_history' sütun hatası giderildi.",
+    "Web panelinde nginx arkasındaki oturum yönlendirme hatası (HTTP 500) düzeltildi."
   ]
 }
