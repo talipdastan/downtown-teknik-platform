@@ -26,7 +26,9 @@ export function useDebouncedRealtime({
   enabled = true,
 }: UseDebouncedRealtimeOptions) {
   const refreshRef = useRef(onRefresh);
-  refreshRef.current = onRefresh;
+  useEffect(() => {
+    refreshRef.current = onRefresh;
+  }, [onRefresh]);
   const tablesKey = tables.join(',');
 
   useEffect(() => {

@@ -136,15 +136,17 @@ export default function ContractsPage() {
     await queryClient.invalidateQueries({ queryKey: ['cmms', 'contracts'] });
   };
 
+  const [renderNowMs] = useState(() => Date.now());
+
   const stats = useMemo(() => {
-    const nowMs = Date.now();
+    const nowMs = renderNowMs;
     const soon = contracts.filter((c) => {
       const diffDays = (new Date(c.end_date).getTime() - nowMs) / 86400000;
       return diffDays <= 45;
     }).length;
     const monthlySum = contracts.reduce((s, c) => s + Number(c.monthly_cost || 0), 0);
     return { vendors: vendors.length, contracts: contracts.length, soon, monthlySum };
-  }, [vendors, contracts]);
+  }, [vendors, contracts, renderNowMs]);
 
   async function saveVendor(e: React.FormEvent) {
     e.preventDefault();
@@ -315,7 +317,7 @@ export default function ContractsPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {contracts.map((c) => {
-                  const daysLeft = Math.ceil((new Date(c.end_date).getTime() - Date.now()) / 86400000);
+                  const daysLeft = Math.ceil((new Date(c.end_date).getTime() - renderNowMs) / 86400000);
                   return (
                     <tr key={c.id} className="hover:bg-canvas/50">
                       <td className="px-4 py-3">

@@ -239,8 +239,10 @@ export default function EnergyMetersPage() {
     }
   }
 
+  const [renderNowMs] = useState(() => Date.now());
+
   function daysLeftLabel(purgeAt: string): string {
-    const ms = new Date(purgeAt).getTime() - Date.now();
+    const ms = new Date(purgeAt).getTime() - renderNowMs;
     const days = Math.max(0, Math.ceil(ms / 86_400_000));
     return days === 0 ? 'Bugün silinecek' : `${days} gün kaldı`;
   }
